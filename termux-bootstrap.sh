@@ -30,3 +30,10 @@ mkdir -p ~/.termux
 # Download and set the Nerd Font for Termux
 curl -fLo ~/.termux/font.ttf https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/SourceCodePro/SauceCodeProNerdFontMono-Regular.ttf
 termux-reload-settings
+
+# Warn the user that existing configurations will be deleted
+read -p "Existing configuration at ~/.config/nvim will be deleted. Press Enter to continue..."
+rm -rf ~/.config/nvim/*
+
+# Clone the configuration
+git clone https://github.com/watkins-matt/nvim-config.git ~/.config/nvim
