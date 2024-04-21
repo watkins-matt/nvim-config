@@ -11,7 +11,8 @@ provided which should install all dependencies.
 ## Installation on Termux
 
 ```bash
-curl -sL https://raw.githubusercontent.com/watkins-matt/nvim-config/main/termux-bootstrap.sh | bash
+curl -sL https://raw.githubusercontent.com/watkins-matt/nvim-config/main/termux-bootstrap.sh > termux-bootstrap.sh
+bash termux-bootstrap.sh
 ```
 
 ## Credit

@@ -7,7 +7,7 @@ pkg upgrade -y
 # Install essential packages
 pkg install -y \
     curl \
-    dart
+    dart \
     fd \
     git \
     jq \
