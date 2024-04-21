@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Update and upgrade Termux packages
-pkg update
-pkg upgrade -y
+pkg update && pkg upgrade -y
 
 # Install essential packages
 pkg install -y \
     curl \
+    binutils \
     dart \
     fd \
     git \
@@ -25,6 +25,7 @@ pkg install -y \
 # Create .config for Neovim
 mkdir -p ~/.config/nvim
 mkdir -p ~/.local/share/nvim
+mkdir -p ~/.termux
 
 # Download and set the Nerd Font for Termux
 curl -fLo ~/.termux/font.ttf https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/SourceCodePro/SauceCodeProNerdFontMono-Regular.ttf
