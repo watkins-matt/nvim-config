@@ -9,8 +9,10 @@ pkg install -y \
     binutils \
     dart \
     fd \
+    gh \
     git \
     jq \
+    lazygit \
     lua-language-server \
     lua53 \
     neovim \
@@ -20,7 +22,7 @@ pkg install -y \
     python \
     ruff \
     stylua \
-    wget \
+    wget
 
 # Create .config for Neovim
 mkdir -p ~/.config/nvim
