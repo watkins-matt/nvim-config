@@ -182,11 +182,10 @@ return {
 
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.tbl_keys(servers or {})
 
       -- If not on Termux, add lua-language-server and stylua
       if not vim.g.is_termux then
-        vim.list_extend(servers,{
+        vim.list_extend(servers, {
           -- cmd = {...},
           -- filetypes = { ...},
           -- capabilities = {},
@@ -199,15 +198,14 @@ return {
               -- diagnostics = { disable = { 'missing-fields' } },
             },
           },
-        })
+        }, { 'stylua' })
 
-        vim.list_extend(ensure_installed, {
-          'stylua', -- Used to format Lua code
-        })
         -- If on termux, lua_ls must be installed manually
       else
         require('lspconfig').lua_ls.setup {}
       end
+
+      local ensure_installed = vim.tbl_keys(servers or {})
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
