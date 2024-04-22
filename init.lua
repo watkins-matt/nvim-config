@@ -7,7 +7,7 @@ vim.opt.termguicolors = true
 
 -- Check if we are running on Termux, by doing command -v termux-setup-storage &> /dev/null
 -- and set a global variable.
-vim.g.is_termux = vim.fn.system('command -v termux-setup-storage &> /dev/null') == 0
+vim.g.is_termux = vim.fn.executable 'termux-setup-storage' == 1
 
 -- Set <space> as the leader key
 -- See `:help mapleader`
