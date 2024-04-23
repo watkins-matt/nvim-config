@@ -18,6 +18,9 @@ vim.g.maplocalleader = ' '
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
 
+-- Disable word wrap
+vim.wo.wrap = false
+
 require 'options'
 require 'keymaps'
 require 'lazy-config'
