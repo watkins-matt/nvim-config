@@ -18,6 +18,9 @@ vim.g.maplocalleader = ' '
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
 
+vim.opt.encoding = 'utf-8'
+vim.opt.fileencoding = 'utf-8'
+
 -- Disable word wrap
 vim.wo.wrap = false
 
