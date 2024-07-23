@@ -12,7 +12,9 @@ return {
 
     -- Ensure that stylua is installed on non-termux systems
     if not vim.g.is_termux then
-      vim.list_extend(ensure_installed, { 'stylua', 'black', 'debugpy' })
+      table.insert(ensure_installed, 'stylua')
+      table.insert(ensure_installed, 'black')
+      table.insert(ensure_installed, 'debugpy')
     end
 
     require('mason-null-ls').setup {
