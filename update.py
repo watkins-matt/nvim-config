@@ -140,8 +140,11 @@ def check_update():
 
 def install_script():
     """Copy the script to /opt/nvim/update.py if it doesn't exist."""
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(INSTALL_PATH), exist_ok=True)
+
     if not os.path.exists(INSTALL_PATH):
-        shutil.copy2(sys.argv[0], INSTALL_PATH)
+        shutil.copy2(__file__, INSTALL_PATH)
         os.chmod(INSTALL_PATH, 0o755)  # Make the script executable
         logging.info(f"Script installed to {INSTALL_PATH}")
     else:
