@@ -62,4 +62,10 @@ vim.opt.cursorline = true
 -- Minimal number of screen lines to keep above and below the cursor.
 vim.opt.scrolloff = 10
 
+-- Ensure fast cursor updates
+vim.opt.ttyfast = true
+vim.opt.timeout = true
+vim.opt.timeoutlen = 1000
+vim.opt.ttimeoutlen = 0
+
 -- vim: ts=2 sts=2 sw=2 et
