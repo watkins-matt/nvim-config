@@ -10,7 +10,7 @@ it will add a crontab entry so that NVIM and the configuration from this reposit
 nightly.
 
 ```bash
-sudo bash -c 'curl -sSL https://raw.githubusercontent.com/watkins-matt/nvim-config/main/update.py -o /opt/nvim/update.py && chmod +x /opt/nvim/update.py && python3 /opt/nvim/update.py'
+curl -sSL https://raw.githubusercontent.com/watkins-matt/nvim-config/main/update.py -o ~/update_nvim.py && chmod +x ~/update_nvim.py && sudo python3 ~/update_nvim.py && rm ~/update_nvim.py
 ```
 
 ## Termux Support
