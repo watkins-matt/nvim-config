@@ -1,42 +1,66 @@
--- Disable netrw (we're using nvim-tree)
-vim.g.loaded_netrw = 1
-vim.g.loaded_netrwPlugin = 1
+-- File: lua/options.lua
 
--- Environment detection
+--------------------------------------------------------------------------------
+-- Environment Detection
+--------------------------------------------------------------------------------
+
+-- Check if running on Termux
 vim.g.is_termux = vim.fn.executable 'termux-setup-storage' == 1
-vim.g.have_nerd_font = true -- Set to true if using a Nerd Font
+
+-- Check if running inside tmux
+vim.g.is_tmux = vim.env.TMUX ~= nil
 
 --------------------------------------------------------------------------------
--- General Settings
+-- Clipboard Settings
 --------------------------------------------------------------------------------
 
--- Enable 24-bit RGB color in the TUI
-vim.opt.termguicolors = true
+-- Set up clipboard provider based on environment
+if vim.g.is_termux then
+  -- Termux-specific clipboard settings
+  vim.g.clipboard = {
+    name = 'termux',
+    copy = {
+      ['+'] = 'termux-clipboard-set',
+      ['*'] = 'termux-clipboard-set',
+    },
+    paste = {
+      ['+'] = 'termux-clipboard-get',
+      ['*'] = 'termux-clipboard-get',
+    },
+  }
+else
+  -- Default clipboard setting for other environments
+  vim.opt.clipboard:append 'unnamedplus'
+end
+
+-- Enable clipboard integration
+vim.opt.clipboard:append 'unnamedplus'
+
+--------------------------------------------------------------------------------
+-- Mouse Settings
+--------------------------------------------------------------------------------
 
 -- Enable mouse support in all modes
 vim.opt.mouse = 'a'
 
--- Use system clipboard for all operations
-vim.opt.clipboard = 'unnamedplus'
+-- Disable right-click menu
+vim.opt.mousemodel = 'extend'
 
--- Enable persistent undo
-vim.opt.undofile = true
+-- Enable focus follows mouse
+vim.opt.mousefocus = true
 
--- Decrease update time (default 4000ms)
-vim.opt.updatetime = 250
-
--- Time in milliseconds to wait for a mapped sequence to complete
-vim.opt.timeoutlen = 300
+-- Hide mouse when typing
+vim.opt.mousehide = true
 
 --------------------------------------------------------------------------------
--- UI Settings
+-- User Interface Settings
 --------------------------------------------------------------------------------
 
 -- Show line numbers
 vim.opt.number = true
 
--- Disable line wrapping
-vim.opt.wrap = false
+-- Disable relative line numbers (set to true to enable)
+vim.opt.relativenumber = false
 
 -- Hide the mode indicator (shown in statusline)
 vim.opt.showmode = false
@@ -44,7 +68,7 @@ vim.opt.showmode = false
 -- Hide command line when not in use
 vim.opt.cmdheight = 0
 
--- Always show the signcolumn
+-- Always show the sign column
 vim.opt.signcolumn = 'yes'
 
 -- Highlight the current line
@@ -56,15 +80,21 @@ vim.opt.scrolloff = 10
 -- Remove the '~' character on empty lines
 vim.opt.fillchars = { eob = ' ' }
 
+-- Enable 24-bit RGB color in the TUI
+vim.opt.termguicolors = true
+
 --------------------------------------------------------------------------------
--- Split Behavior
+-- Indentation and Whitespace
 --------------------------------------------------------------------------------
 
--- Open new vertical splits to the right
-vim.opt.splitright = true
+-- Enable smart indenting
+vim.opt.breakindent = true
 
--- Open new horizontal splits below
-vim.opt.splitbelow = true
+-- Show invisible characters
+vim.opt.list = true
+
+-- Define which whitespace characters to show
+vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
 
 --------------------------------------------------------------------------------
 -- Search Settings
@@ -80,35 +110,24 @@ vim.opt.smartcase = true
 vim.opt.inccommand = 'split'
 
 --------------------------------------------------------------------------------
--- Whitespace Display
+-- Window Behavior
 --------------------------------------------------------------------------------
 
--- Show invisible characters
-vim.opt.list = true
+-- Open new vertical splits to the right
+vim.opt.splitright = true
 
--- Define which whitespace characters to show
-vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
-
---------------------------------------------------------------------------------
--- Indentation
---------------------------------------------------------------------------------
-
--- Enable smart indenting
-vim.opt.breakindent = true
+-- Open new horizontal splits below
+vim.opt.splitbelow = true
 
 --------------------------------------------------------------------------------
--- File Encoding
+-- Performance and Timing
 --------------------------------------------------------------------------------
 
--- Set internal encoding of vim
-vim.opt.encoding = 'utf-8'
+-- Decrease update time (default 4000ms)
+vim.opt.updatetime = 250
 
--- Set encoding for files
-vim.opt.fileencoding = 'utf-8'
-
---------------------------------------------------------------------------------
--- Performance
---------------------------------------------------------------------------------
+-- Time in milliseconds to wait for a mapped sequence to complete
+vim.opt.timeoutlen = 300
 
 -- Improves smoothness of redrawing
 vim.opt.ttyfast = true
@@ -121,5 +140,61 @@ vim.opt.timeoutlen = 1000
 
 -- Time in milliseconds to wait for a key code sequence to complete
 vim.opt.ttimeoutlen = 0
+
+--------------------------------------------------------------------------------
+-- File Handling
+--------------------------------------------------------------------------------
+
+-- Enable persistent undo
+vim.opt.undofile = true
+
+-- Disable netrw (we're using nvim-tree)
+vim.g.loaded_netrw = 1
+vim.g.loaded_netrwPlugin = 1
+
+-- Set internal encoding of vim
+vim.opt.encoding = 'utf-8'
+
+-- Set encoding for files
+vim.opt.fileencoding = 'utf-8'
+
+--------------------------------------------------------------------------------
+-- Key Mappings for Copy/Paste
+--------------------------------------------------------------------------------
+
+local function map(mode, lhs, rhs, opts)
+  local options = { noremap = true, silent = true }
+  if opts then
+    options = vim.tbl_extend('force', options, opts)
+  end
+  vim.keymap.set(mode, lhs, rhs, options)
+end
+
+-- Copy in visual mode
+map('v', '<C-c>', '"+y')
+
+-- Cut in visual mode
+map('v', '<C-x>', '"+d')
+
+-- Paste in normal mode
+map('n', '<C-v>', '"+p')
+
+-- Paste in insert mode
+map('i', '<C-v>', '<C-R>+')
+
+-- Paste in command mode
+map('c', '<C-v>', '<C-R>+')
+
+--------------------------------------------------------------------------------
+-- Autocommands
+--------------------------------------------------------------------------------
+
+-- Highlight on yank
+vim.api.nvim_create_autocmd('TextYankPost', {
+  group = vim.api.nvim_create_augroup('highlight_yank', { clear = true }),
+  callback = function()
+    vim.highlight.on_yank()
+  end,
+})
 
 -- vim: ts=2 sts=2 sw=2 et
