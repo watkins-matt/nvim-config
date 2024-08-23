@@ -1,31 +1,19 @@
--- Based on https://github.com/dam9000/kickstart-modular.nvim
-
--- disable netrw since we are using nvim-tree
-vim.g.loaded_netrw = 1
-vim.g.loaded_netrwPlugin = 1
-vim.opt.termguicolors = true
-
--- Check if we are running on Termux, by doing command -v termux-setup-storage &> /dev/null
--- and set a global variable.
-vim.g.is_termux = vim.fn.executable 'termux-setup-storage' == 1
-
--- Set <space> as the leader key
--- See `:help mapleader`
---  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
+-- Set <space> as the leader key (Must happen before plugins are loaded)
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
--- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = true
-
-vim.opt.encoding = 'utf-8'
-vim.opt.fileencoding = 'utf-8'
-
--- Disable word wrap
-vim.wo.wrap = false
-
+-- Load options
 require 'options'
-require 'keymaps'
+
+-- Load plugin manager
 require 'lazy-config'
+
+-- Load keymaps after plugins
+vim.api.nvim_create_autocmd('User', {
+  pattern = 'VeryLazy',
+  callback = function()
+    require 'keymaps'
+  end,
+})
 
 -- vim: ts=2 sts=2 sw=2 et
