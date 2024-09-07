@@ -189,30 +189,41 @@ def clone_config_repo():
         logging.error(f"Failed to clone Neovim config repository: {result.stderr}")
 
 def update_config():
-    """Update the Neovim configuration repository."""
+    """Update the Neovim configuration repository, backing up local changes and resetting to the latest remote version."""
     logging.info("Updating Neovim config repository")
     os.chdir(CONFIG_DIR)
 
     # Check for local changes
     result = run(['git', 'status', '--porcelain'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
     if result.stdout.strip():
+        backup_dir = os.path.expanduser('~/nvim_config_backup/')
+        os.makedirs(backup_dir, exist_ok=True)
         logging.warning("Local changes detected in Neovim config repository")
-        # Stash local changes
-        run(['git', 'stash'], stdout=PIPE, stderr=PIPE)
-        logging.info("Local changes stashed")
 
-    # Pull changes
-    result = run(['git', 'pull'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
+        # Backup modified files to ~/nvim_config_backup/
+        logging.info(f"Backing up local changes to {backup_dir}")
+        modified_files = result.stdout.strip().splitlines()
+        for line in modified_files:
+            file_path = line[3:]  # Remove the status characters from git status output
+            abs_file_path = os.path.join(CONFIG_DIR, file_path)
+            backup_file_path = os.path.join(backup_dir, file_path)
+
+            if os.path.exists(abs_file_path):
+                os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
+                shutil.copy2(abs_file_path, backup_file_path)
+                logging.info(f"Backed up {abs_file_path} to {backup_file_path}")
+
+    # Force pull the latest changes by resetting the repository to the latest remote version
+    result = run(['git', 'fetch', 'origin'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
     if result.returncode == 0:
-        logging.info("Neovim config repository updated successfully")
+        run(['git', 'reset', '--hard', 'origin/master'], stdout=PIPE, stderr=PIPE)
+        logging.info("Neovim config repository reset to latest remote commit")
     else:
-        logging.error(f"Failed to update Neovim config repository: {result.stderr}")
+        logging.error(f"Failed to fetch the latest remote changes: {result.stderr}")
+        return
 
-    # Apply stashed changes if any
-    result = run(['git', 'stash', 'list'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
-    if result.stdout.strip():
-        run(['git', 'stash', 'pop'], stdout=PIPE, stderr=PIPE)
-        logging.info("Stashed local changes reapplied")
+    logging.info("Neovim config repository updated successfully")
+
 
 def create_update_alias():
     """Create an alias for instant config updates and reload shell configuration."""
