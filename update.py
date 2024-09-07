@@ -7,6 +7,7 @@ import os
 import sys
 import shutil
 from crontab import CronTab
+import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -189,41 +190,60 @@ def clone_config_repo():
         logging.error(f"Failed to clone Neovim config repository: {result.stderr}")
 
 def update_config():
-    """Update the Neovim configuration repository, backing up local changes and resetting to the latest remote version."""
+    """Update the Neovim configuration repository, backing up modified or added files and resetting to the latest remote version."""
     logging.info("Updating Neovim config repository")
     os.chdir(CONFIG_DIR)
 
     # Check for local changes
     result = run(['git', 'status', '--porcelain'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
-    if result.stdout.strip():
-        backup_dir = os.path.expanduser('~/nvim_config_backup/')
+    modified_files = result.stdout.strip().splitlines()
+
+    if modified_files:
+        # Create a timestamped backup directory
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_dir = os.path.expanduser(f'~/nvim_config_backup/{timestamp}/')
         os.makedirs(backup_dir, exist_ok=True)
-        logging.warning("Local changes detected in Neovim config repository")
+        logging.warning(f"Local changes detected in Neovim config repository. Backing up to {backup_dir}")
 
-        # Backup modified files to ~/nvim_config_backup/
-        logging.info(f"Backing up local changes to {backup_dir}")
-        modified_files = result.stdout.strip().splitlines()
+        # Backup modified or added files to the timestamped directory
         for line in modified_files:
-            file_path = line[3:]  # Remove the status characters from git status output
-            abs_file_path = os.path.join(CONFIG_DIR, file_path)
-            backup_file_path = os.path.join(backup_dir, file_path)
+            # Split on the first space to separate the status and the file path
+            parts = line.split(maxsplit=1)
+            if len(parts) == 2:
+                status = parts[0].strip().lower()  # Get the status part (e.g., 'm', 'a')
+                file_path = parts[1]  # Keep the file path
 
-            if os.path.exists(abs_file_path):
-                os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
-                shutil.copy2(abs_file_path, backup_file_path)
-                logging.info(f"Backed up {abs_file_path} to {backup_file_path}")
+                # Check if the file is modified ('m') or added ('a')
+                if status == 'm' or status == 'a':
+                    abs_file_path = os.path.join(CONFIG_DIR, file_path)
+                    backup_file_path = os.path.join(backup_dir, file_path)
 
-    # Force pull the latest changes by resetting the repository to the latest remote version
-    result = run(['git', 'fetch', 'origin'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
+                    # Log and back up the modified or added file
+                    logging.info(f"Found {status} file: {abs_file_path}")
+                    if os.path.exists(abs_file_path):
+                        os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
+                        shutil.copy2(abs_file_path, backup_file_path)
+                        logging.info(f"Backed up {abs_file_path} to {backup_file_path}")
+                else:
+                    logging.info(f"Skipping file with status {status}: {file_path}")
+            else:
+                logging.error(f"Failed to parse line from git status: {line}")
+
+    # Fetch the latest changes from the remote
+    result = run(['git', 'fetch'], stdout=PIPE, stderr=PIPE, universal_newlines=True)
     if result.returncode == 0:
-        run(['git', 'reset', '--hard', 'origin/master'], stdout=PIPE, stderr=PIPE)
-        logging.info("Neovim config repository reset to latest remote commit")
+        # Perform a hard reset to the latest commit on the current branch
+        run(['git', 'reset', '--hard', 'HEAD'], stdout=PIPE, stderr=PIPE)
+        logging.info("Neovim config repository reset to the latest commit on the current branch")
+
+        # Clean untracked files and directories (git clean)
+        run(['git', 'clean', '-fd'], stdout=PIPE, stderr=PIPE)
+        logging.info("Removed untracked files and directories using git clean")
     else:
         logging.error(f"Failed to fetch the latest remote changes: {result.stderr}")
         return
 
     logging.info("Neovim config repository updated successfully")
-
 
 def create_update_alias():
     """Create an alias for instant config updates and reload shell configuration."""
