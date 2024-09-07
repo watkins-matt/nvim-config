@@ -5,7 +5,7 @@
 --------------------------------------------------------------------------------
 
 -- Check if running on Termux
-vim.g.is_termux = vim.fn.executable("termux-setup-storage") == 1
+vim.g.is_termux = vim.fn.executable 'termux-setup-storage' == 1
 
 -- Check if running inside tmux
 vim.g.is_tmux = vim.env.TMUX ~= nil
@@ -16,35 +16,35 @@ vim.g.is_tmux = vim.env.TMUX ~= nil
 
 -- Set up clipboard provider based on environment
 if vim.g.is_termux then
-	-- Termux-specific clipboard settings
-	vim.g.clipboard = {
-		name = "termux",
-		copy = {
-			["+"] = "termux-clipboard-set",
-			["*"] = "termux-clipboard-set",
-		},
-		paste = {
-			["+"] = "termux-clipboard-get",
-			["*"] = "termux-clipboard-get",
-		},
-	}
+  -- Termux-specific clipboard settings
+  vim.g.clipboard = {
+    name = 'termux',
+    copy = {
+      ['+'] = 'termux-clipboard-set',
+      ['*'] = 'termux-clipboard-set',
+    },
+    paste = {
+      ['+'] = 'termux-clipboard-get',
+      ['*'] = 'termux-clipboard-get',
+    },
+  }
 else
-	-- Default clipboard setting for other environments
-	vim.opt.clipboard:append("unnamedplus")
+  -- Default clipboard setting for other environments
+  vim.opt.clipboard:append 'unnamedplus'
 end
 
 -- Enable clipboard integration
-vim.opt.clipboard:append("unnamedplus")
+vim.opt.clipboard:append 'unnamedplus'
 
 --------------------------------------------------------------------------------
 -- Mouse Settings
 --------------------------------------------------------------------------------
 
 -- Enable mouse support in all modes
-vim.opt.mouse = "a"
+vim.opt.mouse = 'a'
 
 -- Disable right-click menu
-vim.opt.mousemodel = "extend"
+vim.opt.mousemodel = 'extend'
 
 -- Enable focus follows mouse
 vim.opt.mousefocus = true
@@ -69,7 +69,7 @@ vim.opt.showmode = false
 vim.opt.cmdheight = 0
 
 -- Always show the sign column
-vim.opt.signcolumn = "yes"
+vim.opt.signcolumn = 'yes'
 
 -- Highlight the current line
 vim.opt.cursorline = true
@@ -78,7 +78,7 @@ vim.opt.cursorline = true
 vim.opt.scrolloff = 10
 
 -- Remove the '~' character on empty lines
-vim.opt.fillchars = { eob = " " }
+vim.opt.fillchars = { eob = ' ' }
 
 -- Enable 24-bit RGB color in the TUI
 vim.opt.termguicolors = true
@@ -93,11 +93,17 @@ vim.opt.lazyredraw = false
 -- Enable smart indenting
 vim.opt.breakindent = true
 
--- Show invisible characters
-vim.opt.list = true
+-- Don't show invisible characters
+vim.opt.list = false
 
 -- Define which whitespace characters to show
-vim.opt.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
+vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' }
+
+-- Set tab settings
+vim.o.tabstop = 4 -- Tab should look like 4 spaces
+vim.o.expandtab = true -- Tab should insert spaces
+vim.o.softtabstop = 4 -- Number of spaces inserted when tab is pressed
+vim.o.shiftwidth = 4 -- Number of spaces inserted when indenting
 
 --------------------------------------------------------------------------------
 -- Search Settings
@@ -110,7 +116,7 @@ vim.opt.ignorecase = true
 vim.opt.smartcase = true
 
 -- Show search results as you type
-vim.opt.inccommand = "split"
+vim.opt.inccommand = 'split'
 
 --------------------------------------------------------------------------------
 -- Window Behavior
@@ -156,48 +162,48 @@ vim.g.loaded_netrw = 1
 vim.g.loaded_netrwPlugin = 1
 
 -- Set internal encoding of vim
-vim.opt.encoding = "utf-8"
+vim.opt.encoding = 'utf-8'
 
 -- Set encoding for files
-vim.opt.fileencoding = "utf-8"
+vim.opt.fileencoding = 'utf-8'
 
 --------------------------------------------------------------------------------
 -- Key Mappings for Copy/Paste
 --------------------------------------------------------------------------------
 
 local function map(mode, lhs, rhs, opts)
-	local options = { noremap = true, silent = true }
-	if opts then
-		options = vim.tbl_extend("force", options, opts)
-	end
-	vim.keymap.set(mode, lhs, rhs, options)
+  local options = { noremap = true, silent = true }
+  if opts then
+    options = vim.tbl_extend('force', options, opts)
+  end
+  vim.keymap.set(mode, lhs, rhs, options)
 end
 
 -- Copy in visual mode
-map("v", "<C-c>", '"+y')
+map('v', '<C-c>', '"+y')
 
 -- Cut in visual mode
-map("v", "<C-x>", '"+d')
+map('v', '<C-x>', '"+d')
 
 -- Paste in normal mode
-map("n", "<C-v>", ':set paste<CR>"+p:set nopaste<CR>', { noremap = true, silent = true })
+map('n', '<C-v>', ':set paste<CR>"+p:set nopaste<CR>', { noremap = true, silent = true })
 
 -- Paste in insert mode
-map("i", "<C-v>", "<C-o>:set paste<CR><C-R>+<C-o>:set nopaste<CR>", { noremap = true, silent = true })
+map('i', '<C-v>', '<C-o>:set paste<CR><C-R>+<C-o>:set nopaste<CR>', { noremap = true, silent = true })
 
 -- Paste in command mode
-map("c", "<C-v>", "<C-R>+", { noremap = true, silent = true })
+map('c', '<C-v>', '<C-R>+', { noremap = true, silent = true })
 
 --------------------------------------------------------------------------------
 -- Autocommands
 --------------------------------------------------------------------------------
 
 -- Highlight on yank
-vim.api.nvim_create_autocmd("TextYankPost", {
-	group = vim.api.nvim_create_augroup("highlight_yank", { clear = true }),
-	callback = function()
-		vim.highlight.on_yank()
-	end,
+vim.api.nvim_create_autocmd('TextYankPost', {
+  group = vim.api.nvim_create_augroup('highlight_yank', { clear = true }),
+  callback = function()
+    vim.highlight.on_yank()
+  end,
 })
 
 -- vim: ts=2 sts=2 sw=2 et
