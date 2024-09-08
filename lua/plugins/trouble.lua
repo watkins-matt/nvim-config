@@ -37,5 +37,9 @@ return {
   opts = {
     warn_no_results = false,
     open_no_results = true,
+    focus = true,
+    keys = {
+      x = 'close',
+    },
   },
 }
