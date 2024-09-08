@@ -8,7 +8,7 @@ return {
   config = function()
     require('mason').setup()
 
-    local ensure_installed = { 'jq', 'jedi_language_server' }
+    local ensure_installed = { 'jq', 'python-lsp-server' }
 
     -- Ensure that stylua is installed on non-termux systems
     if not vim.g.is_termux then

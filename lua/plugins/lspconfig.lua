@@ -6,6 +6,7 @@ return {
       { 'williamboman/mason.nvim', config = true }, -- NOTE: Must be loaded before dependants
       'williamboman/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
+      'jay-babu/mason-null-ls.nvim',
       'nvimdev/lspsaga.nvim',
 
       -- Useful status updates for LSP.
@@ -137,9 +138,28 @@ return {
       capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
 
       local servers = {
-        jedi_language_server = {
-          cmd = { 'jedi-language-server' },
-          filetypes = { 'python' },
+        pylsp = {
+          settings = {
+            pylsp = {
+              plugins = {
+                -- Formatting options
+                autopep8 = { enabled = false },
+                black = { enabled = true },
+
+                yapf = { enabled = false },
+                -- Linting options
+                pycodestyle = { enabled = false },
+                pyflakes = { enabled = false },
+                pylint = { enabled = true, executable = 'pylint' },
+                -- Type checking options
+                pylsp_mypy = { enabled = true },
+                -- Autocompletion options
+                jedi_completion = { fuzzy = true },
+                -- Import sorting options
+                pyls_isort = { enabled = true },
+              },
+            },
+          },
         },
       }
 

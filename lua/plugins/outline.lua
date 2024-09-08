@@ -10,5 +10,8 @@ return {
       width = 30,
       relative_width = false,
     },
+    symbols = {
+      filter = { 'Function', 'Class' },
+    },
   },
 }
