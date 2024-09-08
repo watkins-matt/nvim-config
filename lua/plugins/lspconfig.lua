@@ -145,14 +145,15 @@ return {
                 -- Formatting options
                 autopep8 = { enabled = false },
                 black = { enabled = true },
-
                 yapf = { enabled = false },
                 -- Linting options
+                ruff = { enabled = false }, -- Enabled in lint.lua
+                flake8 = { enabled = false },
                 pycodestyle = { enabled = false },
                 pyflakes = { enabled = false },
-                pylint = { enabled = true, executable = 'pylint' },
+                pylint = { enabled = false },
                 -- Type checking options
-                pylsp_mypy = { enabled = true },
+                pylsp_mypy = { enabled = true, dmypy = true, report_progress = true },
                 -- Autocompletion options
                 jedi_completion = { fuzzy = true },
                 -- Import sorting options
