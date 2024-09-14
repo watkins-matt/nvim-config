@@ -41,5 +41,10 @@ return {
     keys = {
       x = 'close',
     },
+
+    -- Wrap long lines
+    win = {
+      wo = { wrap = true },
+    },
   },
 }
