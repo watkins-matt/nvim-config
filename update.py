@@ -284,6 +284,14 @@ def update_config():
             "Neovim config repository reset to the latest commit on the current branch"
         )
 
+        # Pull the latest changes from the remote
+        result = run(["git", "pull"], stdout=PIPE, stderr=PIPE, universal_newlines=True)
+        if result.returncode == 0:
+            logging.info("Pulled the latest changes from the remote")
+        else:
+            logging.error(f"Failed to pull the latest changes: {result.stderr}")
+            return
+
         # Clean untracked files and directories (git clean)
         run(["git", "clean", "-fd"], stdout=PIPE, stderr=PIPE)
         logging.info("Removed untracked files and directories using git clean")
