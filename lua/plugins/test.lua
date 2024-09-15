@@ -11,21 +11,29 @@ return {
     require('neotest').setup {
       adapters = {
         require 'neotest-python' {
-          -- Extra arguments for nvim-dap configuration
           dap = { justMyCode = false },
-          -- Command line arguments for runner
           args = { '--log-level', 'DEBUG' },
-          -- Runner to use. Will use pytest if available by default.
           runner = 'pytest',
-          -- Custom python path for the runner.
           python = '.venv/bin/python',
-          -- Returns if a given file path is a test file.
           is_test_file = function(file_path)
             return file_path:match 'test_.*%.py$' or file_path:match '.*_test%.py$'
           end,
-          -- Enable shelling out to `pytest` to discover test instances
           pytest_discover_instances = true,
         },
+      },
+      icons = {
+        passed = '✔', -- Checkmark for passed
+        running = '⟳', -- Circular arrow for running
+        failed = '✖', -- Cross for failed
+        skipped = '➖', -- Minus sign for skipped
+        unknown = '?', -- Question mark for unknown
+        non_collapsible = '─', -- Horizontal line
+        collapsed = '─', -- Collapsed state
+        expanded = '╮', -- Expanded state
+        child_prefix = '├', -- Prefix for children nodes
+        final_child_prefix = '╰', -- Prefix for the final child node
+        child_indent = '│', -- Indentation for children nodes
+        final_child_indent = ' ', -- Final indentation
       },
     }
 
