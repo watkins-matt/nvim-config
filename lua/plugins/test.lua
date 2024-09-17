@@ -8,13 +8,17 @@ return {
     'nvim-neotest/neotest-python',
   },
   config = function()
+    -- Import the Python project root utility
+    local python_project_root = require 'lua.utils.python_root'
+
     require('neotest').setup {
       adapters = {
         require 'neotest-python' {
           dap = { justMyCode = false },
           args = { '--log-level', 'DEBUG' },
           runner = 'pytest',
-          python = '.venv/bin/python',
+          -- Dynamically use the Python interpreter from the project root
+          python = python_project_root.get_python_path(),
           is_test_file = function(file_path)
             return file_path:match 'test_.*%.py$' or file_path:match '.*_test%.py$'
           end,
