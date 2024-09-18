@@ -9,7 +9,7 @@ return {
   },
   config = function()
     -- Import the Python project root utility
-    local python_project_root = require 'lua.utils.python_root'
+    local python_project_root = require 'utils.python_root'
 
     require('neotest').setup {
       adapters = {
@@ -48,9 +48,9 @@ return {
     vim.keymap.set('n', '<leader>tf', function()
       require('neotest').run.run(vim.fn.expand '%')
     end, { desc = 'Run current file' })
-    vim.keymap.set('n', '<leader>ts', function()
+    vim.keymap.set('n', '<leader>T', function()
       require('neotest').summary.toggle()
-    end, { desc = 'Toggle test summary' })
+    end, { desc = 'Toggle test interface' })
     vim.keymap.set('n', '<leader>to', function()
       require('neotest').output.open()
     end, { desc = 'Open test output' })

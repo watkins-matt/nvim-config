@@ -88,7 +88,7 @@ return {
     vim.notify = require 'notify' -- Use nvim-notify instead of default vim.notify
 
     -- Import the Python project root utility
-    local python_project_root = require 'lua.utils.python_root'
+    local python_project_root = require 'utils.python_root'
 
     -- Check if the Python interpreter exists, otherwise print a warning
     if vim.fn.executable(python_project_root.get_python_path()) == 1 then
@@ -98,10 +98,10 @@ return {
     end
 
     -- Check if Dart is installed before setting up
-    if vim.fn.executable 'dart' == 1 then
-      require('dap-dart').setup()
-    else
-      vim.notify('Warning: Dart executable not found! Dart debugging won’t work.', vim.log.levels.WARN)
-    end
+    -- if vim.fn.executable 'dart' == 1 then
+    --   require('dap-dart').setup()
+    -- else
+    --   vim.notify('Warning: Dart executable not found! Dart debugging won’t work.', vim.log.levels.WARN)
+    -- end
   end,
 }
