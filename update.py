@@ -21,7 +21,7 @@ args = parser.parse_args()
 # Configure logging
 logging.basicConfig(
     stream=sys.stdout,
-    level=logging.DEBUG if args.debug else logging.ERROR,
+    level=logging.DEBUG if args.debug else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %I:%M:%S %p",
 )
