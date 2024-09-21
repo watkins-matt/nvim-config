@@ -265,9 +265,7 @@ def update_config():
 
         # Pull the latest changes from the remote
         result = run(["git", "pull"], stdout=PIPE, stderr=PIPE, universal_newlines=True)
-        if result.returncode == 0:
-            logging.info("Neovim configuration has been updated successfully.")
-        else:
+        if result.returncode != 0:
             logging.error(f"Failed to pull the latest changes: {result.stderr}")
             return
 
@@ -485,18 +483,7 @@ def main():
         logging.debug("Update process complete.")
         logging.debug(f"This script at {INSTALL_PATH} will handle future updates.")
 
-    # Consolidate logging messages
-    if nvim_status:
-        if nvim_updated:
-            nvim_message = "Neovim has been updated."
-        else:
-            nvim_message = "Neovim is already up to date."
-        if config_updated:
-            config_message = "Neovim configuration has been updated successfully."
-        else:
-            config_message = "Neovim configuration is already up to date."
-        logging.info(f"{nvim_message} {config_message}")
-    else:
+    if not nvim_status:
         logging.error("Failed to update Neovim.")
 
 if __name__ == "__main__":
