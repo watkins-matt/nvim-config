@@ -11,11 +11,14 @@ import datetime
 import argparse
 import tempfile
 
-# Configure logging
+# Configure argument parsing
 parser = argparse.ArgumentParser(description="Neovim Updater Script")
 parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+parser.add_argument('--uninstall', action='store_true', help='Uninstall Neovim and its configurations')
+parser.add_argument('--config', action='store_true', help='Update Neovim configurations')
 args = parser.parse_args()
 
+# Configure logging
 logging.basicConfig(
     stream=sys.stdout,
     level=logging.DEBUG if args.debug else logging.ERROR,
@@ -186,28 +189,6 @@ def is_correct_git_repo(directory, expected_remote):
     )
     return result.returncode == 0 and result.stdout.strip() == expected_remote
 
-def clone_or_update_config_repo():
-    """Clone the Neovim configuration repository or update if it exists."""
-    if not is_git_installed():
-        logging.error(
-            "Git is not installed. Please install git and run the script again."
-        )
-        sys.exit(1)
-
-    if os.path.exists(CONFIG_DIR):
-        if is_correct_git_repo(CONFIG_DIR, CONFIG_REPO):
-            logging.info(f"Neovim configuration is up to date.")
-            try:
-                update_config()
-            except Exception as e:
-                logging.error(f"Error updating configuration: {e}")
-        else:
-            logging.debug(f"Removing existing incorrect config directory: {CONFIG_DIR}")
-            shutil.rmtree(CONFIG_DIR)
-            clone_config_repo()
-    else:
-        clone_config_repo()
-
 def clone_config_repo():
     """Clone the Neovim configuration repository."""
     logging.debug(f"Cloning Neovim config repository to {CONFIG_DIR}")
@@ -293,6 +274,28 @@ def update_config():
         logging.error(f"Failed to fetch the latest remote changes: {result.stderr}")
         return
 
+def clone_or_update_config_repo():
+    """Clone the Neovim configuration repository or update if it exists."""
+    if not is_git_installed():
+        logging.error(
+            "Git is not installed. Please install git and run the script again."
+        )
+        sys.exit(1)
+
+    if os.path.exists(CONFIG_DIR):
+        if is_correct_git_repo(CONFIG_DIR, CONFIG_REPO):
+            logging.info("Neovim configuration is up to date.")
+            try:
+                update_config()
+            except Exception as e:
+                logging.error(f"Error updating configuration: {e}")
+        else:
+            logging.debug(f"Removing existing incorrect config directory: {CONFIG_DIR}")
+            shutil.rmtree(CONFIG_DIR)
+            clone_config_repo()
+    else:
+        clone_config_repo()
+
 def create_update_alias():
     """Create an alias for instant config updates."""
     shell = os.environ.get("SHELL", "").lower()
@@ -339,33 +342,49 @@ def handle_self_update():
     current_script = os.path.abspath(__file__)
     temp_dir = tempfile.gettempdir()
     temp_script = os.path.join(temp_dir, "update_new.py")
+    config_script = os.path.join(CONFIG_DIR, "update.py")
 
-    # Download the new script
+    # Determine the source of the update
+    if os.path.exists(config_script):
+        source_script = config_script
+        logging.debug(f"Found update script in config directory: {config_script}")
+    else:
+        source_script = UPDATE_SCRIPT_URL
+        logging.debug(f"Using UPDATE_SCRIPT_URL for self-update: {source_script}")
+
+    # Download the new script or use the existing one from config
     try:
-        response = requests.get(UPDATE_SCRIPT_URL)
-        if response.status_code == 200:
-            with open(temp_script, "w") as f:
-                f.write(response.text)
-            os.chmod(temp_script, 0o755)
-            logging.debug("Downloaded new version of the update script.")
+        if os.path.isfile(source_script):
+            shutil.copy2(source_script, temp_script)
+            logging.debug("Copied new version of the update script from config directory.")
+        else:
+            # Assume it's a URL
+            response = requests.get(source_script)
+            if response.status_code == 200:
+                with open(temp_script, "w") as f:
+                    f.write(response.text)
+                logging.debug("Downloaded new version of the update script from URL.")
+            else:
+                logging.error(f"Failed to download the new update script: HTTP {response.status_code}")
+                return
 
-            # Create a shell script to replace the current script after exit
-            replace_script = f"""#!/bin/bash
+        os.chmod(temp_script, 0o755)
+
+        # Create a shell script to replace the current script after exit
+        replace_script = f"""#!/bin/bash
 sleep 1
 mv "{temp_script}" "{current_script}"
 chmod +x "{current_script}"
 """
 
-            replace_script_path = os.path.join(temp_dir, "replace_update.sh")
-            with open(replace_script_path, "w") as f:
-                f.write(replace_script)
-            os.chmod(replace_script_path, 0o755)
+        replace_script_path = os.path.join(temp_dir, "replace_update.sh")
+        with open(replace_script_path, "w") as f:
+            f.write(replace_script)
+        os.chmod(replace_script_path, 0o755)
 
-            # Execute the replace script in the background
-            call([replace_script_path, "&"], shell=True)
-            logging.info("Neovim has been updated. The update script will be refreshed shortly.")
-        else:
-            logging.error(f"Failed to download the new update script: HTTP {response.status_code}")
+        # Execute the replace script in the background
+        call([replace_script_path, "&"], shell=False)
+        logging.info("Neovim has been updated. The update script will be refreshed shortly.")
     except Exception as e:
         logging.error(f"Error during self-update: {e}")
 
@@ -383,32 +402,13 @@ def check_self_update():
     # Get the Last-Modified header
     latest_mtime_str = response.headers.get('Last-Modified', '')
     if latest_mtime_str:
-        latest_mtime = datetime.datetime.strptime(latest_mtime_str, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
-        if latest_mtime > current_mtime:
-            handle_self_update()
-
-def clone_or_update_config_repo():
-    """Clone the Neovim configuration repository or update if it exists."""
-    if not is_git_installed():
-        logging.error(
-            "Git is not installed. Please install git and run the script again."
-        )
-        sys.exit(1)
-
-    if os.path.exists(CONFIG_DIR):
-        if is_correct_git_repo(CONFIG_DIR, CONFIG_REPO):
-            logging.info("Neovim configuration is up to date.")
-            try:
-                update_config()
-            except Exception as e:
-                logging.error(f"Error updating configuration: {e}")
-        else:
-            logging.debug(f"Removing existing incorrect config directory: {CONFIG_DIR}")
-            shutil.rmtree(CONFIG_DIR)
-            clone_config_repo()
-    else:
-        clone_config_repo()
-
+        try:
+            latest_mtime = datetime.datetime.strptime(latest_mtime_str, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
+            if latest_mtime > current_mtime:
+                logging.debug("A newer version of the update script is available.")
+                handle_self_update()
+        except ValueError as ve:
+            logging.error(f"Failed to parse Last-Modified header: {ve}")
 
 def uninstall():
     """Remove the crontab entries, symlink, /opt/nvim directory, and config directory."""
@@ -426,27 +426,33 @@ def uninstall():
 
     # Remove /opt/nvim directory and config directory
     dirs_to_remove = [NVIM_DIR, CONFIG_DIR]
-    if os.path.abspath(sys.argv[0]).startswith(os.path.abspath(NVIM_DIR)):
+    current_script_path = os.path.abspath(__file__)
+
+    if current_script_path.startswith(os.path.abspath(NVIM_DIR)):
         logging.debug(
             f"Script is running from {NVIM_DIR}. Will delete directories after script completion."
         )
         # Create a separate script to delete the directories
-        delete_script = f"""
+        delete_script = f"""#!/usr/bin/env python3
 import shutil
 import os
+import sys
+import time
 
 dirs_to_delete = {dirs_to_remove}
 for dir in dirs_to_delete:
     if os.path.exists(dir):
         shutil.rmtree(dir)
         print(f"Removed directory {{dir}}")
-os.remove(__file__)
+time.sleep(1)
+os.remove("{current_script_path}")
 """
-        with open("/tmp/delete_nvim.py", "w") as f:
+        delete_script_path = os.path.join(tempfile.gettempdir(), "delete_nvim.py")
+        with open(delete_script_path, "w") as f:
             f.write(delete_script)
-        os.chmod("/tmp/delete_nvim.py", 0o755)
+        os.chmod(delete_script_path, 0o755)
         # Schedule the delete script to run after this script exits
-        os.system(f"(sleep 1 && python3 /tmp/delete_nvim.py)&")
+        os.system(f"python3 {delete_script_path} &")
     else:
         for dir in dirs_to_remove:
             if os.path.exists(dir):
@@ -455,45 +461,132 @@ os.remove(__file__)
 
     logging.info("Uninstallation complete")
 
-def main():
-    if not is_git_installed():
-        logging.error(
-            "Git is not installed. Please install git and run the script again."
-        )
-        sys.exit(1)
-
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--uninstall":
-            uninstall()
-        elif sys.argv[1] == "--config":
-            clone_or_update_config_repo()
-            setup_crontab()
-        else:
-            logging.error(f"Unknown argument: {sys.argv[1]}")
+def create_update_alias():
+    """Create an alias for instant config updates."""
+    shell = os.environ.get("SHELL", "").lower()
+    if "bash" in shell:
+        rc_file = os.path.expanduser("~/.bashrc")
+    elif "zsh" in shell:
+        rc_file = os.path.expanduser("~/.zshrc")
     else:
-        install_script()
-        check_update()
+        logging.debug("Unsupported shell. Alias creation skipped.")
+        return
+
+    alias_line = f"\nalias update-nvim-config='python3 {INSTALL_PATH} --config'\n"
+
+    alias_added = False
+    with open(rc_file, "a+") as f:
+        f.seek(0)
+        content = f.read()
+        if "alias update-nvim-config" not in content:
+            f.write(alias_line)
+            alias_added = True
+            logging.debug(f"Alias 'update-nvim-config' added to {rc_file}")
+        else:
+            logging.debug("Alias 'update-nvim-config' already exists.")
+
+    if alias_added:
+        # Attempt to reload the shell configuration
+        try:
+            os.system(f"source {rc_file}")
+            logging.debug(
+                f"Shell configuration reloaded. The 'update-nvim-config' alias should now be available."
+            )
+        except Exception as e:
+            logging.error(f"Failed to reload shell configuration: {e}")
+            logging.info(
+                f"Please run the following command to use the new alias in the current session:\n    source {rc_file}"
+            )
+
+    logging.debug(
+        "To use the 'update-nvim-config' alias in new terminal sessions, no further action is needed."
+    )
+
+def handle_self_update():
+    """Handle self-update by replacing the running script with the new version."""
+    current_script = os.path.abspath(__file__)
+    temp_dir = tempfile.gettempdir()
+    temp_script = os.path.join(temp_dir, "update_new.py")
+    config_script = os.path.join(CONFIG_DIR, "update.py")
+
+    # Determine the source of the update
+    if os.path.exists(config_script):
+        source_script = config_script
+        logging.debug(f"Found update script in config directory: {config_script}")
+    else:
+        source_script = UPDATE_SCRIPT_URL
+        logging.debug(f"Using UPDATE_SCRIPT_URL for self-update: {source_script}")
+
+    # Download the new script or use the existing one from config
+    try:
+        if os.path.isfile(source_script):
+            shutil.copy2(source_script, temp_script)
+            logging.debug("Copied new version of the update script from config directory.")
+        else:
+            # Assume it's a URL
+            response = requests.get(source_script)
+            if response.status_code == 200:
+                with open(temp_script, "w") as f:
+                    f.write(response.text)
+                logging.debug("Downloaded new version of the update script from URL.")
+            else:
+                logging.error(f"Failed to download the new update script: HTTP {response.status_code}")
+                return
+
+        os.chmod(temp_script, 0o755)
+
+        # Create a shell script to replace the current script after exit
+        replace_script = f"""#!/bin/bash
+sleep 1
+mv "{temp_script}" "{current_script}"
+chmod +x "{current_script}"
+"""
+
+        replace_script_path = os.path.join(temp_dir, "replace_update.sh")
+        with open(replace_script_path, "w") as f:
+            f.write(replace_script)
+        os.chmod(replace_script_path, 0o755)
+
+        # Execute the replace script in the background
+        call([replace_script_path], shell=False)
+        logging.info("Neovim has been updated. The update script will be refreshed shortly.")
+    except Exception as e:
+        logging.error(f"Error during self-update: {e}")
+
+def main():
+    if args.uninstall:
+        uninstall()
+        sys.exit(0)
+
+    if args.config:
         clone_or_update_config_repo()
         setup_crontab()
-        create_update_alias()
-        check_self_update()
+        sys.exit(0)
 
-        current_script_path = os.path.abspath(__file__)
-        if current_script_path != INSTALL_PATH:
-            logging.debug("Initial setup complete.")
-            logging.debug(f"The script has been installed to {INSTALL_PATH}")
-            if not current_script_path.startswith(NVIM_DIR):
-                logging.debug(
-                    f"You can safely delete this script at {current_script_path}"
-                )
+    # Regular update process
+    install_script()
+    check_update()
+    clone_or_update_config_repo()
+    setup_crontab()
+    create_update_alias()
+    check_self_update()
+
+    current_script_path = os.path.abspath(__file__)
+    if current_script_path != INSTALL_PATH:
+        logging.debug("Initial setup complete.")
+        logging.debug(f"The script has been installed to {INSTALL_PATH}")
+        if not current_script_path.startswith(NVIM_DIR):
             logging.debug(
-                f"Future updates will be handled by the installed script at {INSTALL_PATH}"
+                f"You can safely delete this script at {current_script_path}"
             )
-        else:
-            logging.debug("Update process complete.")
-            logging.debug(f"This script at {INSTALL_PATH} will handle future updates.")
+        logging.debug(
+            f"Future updates will be handled by the installed script at {INSTALL_PATH}"
+        )
+    else:
+        logging.debug("Update process complete.")
+        logging.debug(f"This script at {INSTALL_PATH} will handle future updates.")
 
-        logging.info("Neovim and its configuration have been updated successfully.")
+    logging.info("Neovim and its configuration have been updated successfully.")
 
 if __name__ == "__main__":
     main()
