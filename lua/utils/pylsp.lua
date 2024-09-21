@@ -1,5 +1,9 @@
 local M = {}
 
+-- Ensure unpack is available
+---@diagnostic disable-next-line: deprecated
+local unpack = table.unpack or unpack
+
 -- Function to check if a pylsp plugin is installed
 function M.is_pylsp_plugin_installed(plugin_name, package_name)
   local pylsp_install_path = vim.fn.stdpath 'data' .. '/mason/packages/python-lsp-server'
@@ -34,7 +38,7 @@ function M.ensure_pylsp_plugins()
   local installed_count = 0
 
   for _, plugin_info in ipairs(needed_plugins) do
-    local install_name, package_name = table.unpack(plugin_info)
+    local install_name, package_name = unpack(plugin_info)
     if not M.is_pylsp_plugin_installed(install_name, package_name) then
       M.install_pylsp_plugin(install_name)
       installed_count = installed_count + 1
