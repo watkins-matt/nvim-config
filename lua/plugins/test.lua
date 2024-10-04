@@ -36,6 +36,20 @@ return {
         expand_errors = true,
         open = 'botright vsplit | vertical resize ' .. sidebar_width,
       },
+      icons = {
+        passed = '✔', -- Checkmark for passed
+        running = '⟳', -- Circular arrow for running
+        failed = '✖', -- Cross for failed
+        skipped = '➖', -- Minus sign for skipped
+        unknown = '?', -- Question mark for unknown
+        non_collapsible = '─', -- Horizontal line
+        collapsed = '─', -- Collapsed state
+        expanded = '╮', -- Expanded state
+        child_prefix = '├', -- Prefix for children nodes
+        final_child_prefix = '╰', -- Prefix for the final child node
+        child_indent = '│', -- Indentation for children nodes
+        final_child_indent = ' ', -- Final indentation
+      },
       adapters = {
         require 'neotest-python' {
           dap = { justMyCode = false },
