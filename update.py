@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 
-import requests
-import logging
-from subprocess import call, run, PIPE
-import os
-import sys
-import shutil
 from crontab import CronTab
-import datetime
+from dataclasses import dataclass
+from enum import Enum
+from subprocess import call, run, PIPE
+from typing import List, Dict, Optional
 import argparse
+import datetime
+import logging
+import os
+import re
+import requests
+import shutil
+import sys
 import tempfile
+import time
 
 # Configure argument parsing
 parser = argparse.ArgumentParser(description="Neovim Updater Script")
-parser.add_argument('--debug', action='store_true', help='Enable debug logging')
-parser.add_argument('--uninstall', action='store_true', help='Uninstall Neovim and its configurations')
-parser.add_argument('--config', action='store_true', help='Update Neovim configurations')
+parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+parser.add_argument(
+    "--uninstall", action="store_true", help="Uninstall Neovim and its configurations"
+)
+parser.add_argument(
+    "--config", action="store_true", help="Update Neovim configurations"
+)
 args = parser.parse_args()
 
 # Configure logging
@@ -34,11 +43,301 @@ CONFIG_REPO = "https://github.com/watkins-matt/nvim-config.git"
 CONFIG_DIR = os.path.expanduser("~/.config/nvim")
 UPDATE_SCRIPT_URL = "https://raw.githubusercontent.com/watkins-matt/nvim-config/refs/heads/main/update.py"
 
+
+class Architecture(Enum):
+    X86_64 = ("x86_64", ["x86_64", "amd64", "x86-64"])
+    ARM64 = ("arm64", ["arm64", "aarch64", "armv8"])
+
+    def __init__(self, canonical: str, matches: List[str]):
+        self.canonical = canonical
+        self.matches = matches
+        # Pre-compile regex patterns for each architecture match
+        self.patterns = [
+            re.compile(rf"\b{re.escape(pattern)}\b") for pattern in matches
+        ]
+
+    @classmethod
+    def detect_current(cls) -> "Architecture":
+        """Detect the current system architecture."""
+        import platform
+
+        machine = platform.machine().lower()
+
+        # Try to match the machine architecture against known patterns
+        for arch in cls:
+            if any(pattern.search(machine) for pattern in arch.patterns):
+                return arch
+
+        raise ValueError(f"Unsupported architecture: {machine}")
+
+    @classmethod
+    def detect_from_name(cls, name: str) -> Optional["Architecture"]:
+        """Try to detect architecture from an asset name."""
+        name_lower = name.lower()
+
+        # Try to match against known architecture patterns
+        for arch in cls:
+            if any(pattern.search(name_lower) for pattern in arch.patterns):
+                return arch
+
+        return None
+
+
+@dataclass
+class ReleaseAsset:
+    """Represents a single release asset file."""
+
+    name: str
+    browser_download_url: str
+    size: int
+    content_type: str
+    download_count: int
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "ReleaseAsset":
+        return cls(
+            name=data["name"],
+            browser_download_url=data["browser_download_url"],
+            size=data["size"],
+            content_type=data["content_type"],
+            download_count=data["download_count"],
+        )
+
+
+@dataclass
+class ReleaseInfo:
+    """Represents a single Neovim release."""
+
+    tag_name: str
+    name: str
+    body: str
+    assets: List[ReleaseAsset]
+    prerelease: bool
+    draft: bool
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "ReleaseInfo":
+        assets = [ReleaseAsset.from_dict(asset) for asset in data["assets"]]
+        return cls(
+            tag_name=data["tag_name"],
+            name=data["name"],
+            body=data["body"],
+            assets=assets,
+            prerelease=data["prerelease"],
+            draft=data["draft"],
+        )
+
+    def find_appimage_asset(
+        self, arch: Architecture = Architecture.X86_64
+    ) -> Optional[ReleaseAsset]:
+        """
+        Find the AppImage asset for the specified architecture using flexible matching.
+
+        The matching algorithm:
+        1. Looks for files ending in .appimage
+        2. Tries to detect architecture from the filename
+        3. Prioritizes files that:
+           - Contain 'linux' in the name
+           - Match the requested architecture
+           - Don't contain 'zsync' or other metadata extensions
+        """
+        appimage_assets = []
+
+        for asset in self.assets:
+            name_lower = asset.name.lower()
+
+            # Skip non-AppImage and metadata files
+            if not name_lower.endswith(".appimage") or ".appimage." in name_lower:
+                continue
+
+            # Try to detect architecture from the filename
+            detected_arch = Architecture.detect_from_name(name_lower)
+            if detected_arch is None:
+                continue
+
+            # Score this asset based on various factors
+            score = 0
+            if detected_arch == arch:
+                score += 10
+            if "linux" in name_lower:
+                score += 5
+
+            appimage_assets.append((score, asset))
+
+        # Sort by score and return the best match
+        if appimage_assets:
+            return sorted(appimage_assets, key=lambda x: x[0], reverse=True)[0][1]
+
+        return None
+
+    def get_appimage_url(
+        self, arch: Architecture = Architecture.X86_64
+    ) -> Optional[str]:
+        """Get the download URL for the AppImage of the specified architecture."""
+        asset = self.find_appimage_asset(arch)
+        return asset.browser_download_url if asset else None
+
+    def get_appimage_size(
+        self, arch: Architecture = Architecture.X86_64
+    ) -> Optional[int]:
+        """Get the expected size of the AppImage for the specified architecture."""
+        asset = self.find_appimage_asset(arch)
+        return asset.size if asset else None
+
+
+class ReleaseManager:
+    """Manages Neovim releases and updates."""
+
+    GITHUB_API_URL = "https://api.github.com/repos/neovim/neovim/releases/latest"
+    MIN_APPIMAGE_SIZE = 10 * 1024 * 1024  # 10MB minimum size
+    CACHE_DURATION = 3600  # Cache duration in seconds (1 hour)
+
+    _api_cache = {}  # Class-level cache dictionary
+
+    def __init__(self):
+        self.latest_release: Optional[ReleaseInfo] = None
+
+    @classmethod
+    def _get_cached_response(cls, url: str) -> Optional[Dict]:
+        """Get cached response if it exists and is still valid."""
+        cache_entry = cls._api_cache.get(url)
+        if not cache_entry:
+            return None
+
+        timestamp, data = cache_entry
+        if time.time() - timestamp > cls.CACHE_DURATION:
+            # Cache expired
+            del cls._api_cache[url]
+            return None
+
+        return data
+
+    @classmethod
+    def _cache_response(cls, url: str, data: Dict):
+        """Cache response data with current timestamp."""
+        cls._api_cache[url] = (time.time(), data)
+
+    def fetch_latest_release(self) -> ReleaseInfo:
+        """Fetch the latest release information from GitHub."""
+        # Check cache first
+        cached_data = self._get_cached_response(self.GITHUB_API_URL)
+        if cached_data:
+            logging.debug("Using cached release information")
+            self.latest_release = ReleaseInfo.from_dict(cached_data)
+            return self.latest_release
+
+        # If not in cache, make the API call
+        logging.debug("Fetching fresh release information")
+        response = requests.get(self.GITHUB_API_URL)
+        if response.status_code != 200:
+            raise ValueError(
+                f"Failed to fetch release info: HTTP {response.status_code}"
+            )
+
+        # Cache the response
+        data = response.json()
+        self._cache_response(self.GITHUB_API_URL, data)
+
+        self.latest_release = ReleaseInfo.from_dict(data)
+        return self.latest_release
+
+    @staticmethod
+    def validate_appimage(file_path: str, expected_size: Optional[int] = None) -> bool:
+        """
+        Validate the AppImage file.
+
+        Args:
+            file_path: Path to the AppImage file
+            expected_size: Expected file size in bytes (if known)
+
+        Returns:
+            bool: True if the file is valid, False otherwise
+        """
+        if not os.path.exists(file_path):
+            return False
+
+        # Check file size
+        file_size = os.path.getsize(file_path)
+        if file_size < ReleaseManager.MIN_APPIMAGE_SIZE:
+            logging.error(f"File too small: {file_size} bytes")
+            return False
+
+        if expected_size and file_size != expected_size:
+            logging.error(f"Size mismatch: expected {expected_size}, got {file_size}")
+            return False
+
+        # Check if file is executable
+        if not os.access(file_path, os.X_OK):
+            logging.error("File is not executable")
+            return False
+
+        return True
+
+    def download_latest(self, target_dir: str, arch: Architecture = None) -> bool:
+        """
+        Download the latest Neovim AppImage.
+
+        Args:
+            target_dir: Directory where Neovim should be installed
+            arch: Target architecture (defaults to system architecture)
+
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        if arch is None:
+            arch = Architecture.detect_current()
+
+        if not self.latest_release:
+            self.fetch_latest_release()
+
+        download_url = self.latest_release.get_appimage_url(arch)
+        if not download_url:
+            raise ValueError(f"No AppImage found for architecture {arch}")
+
+        expected_size = self.latest_release.get_appimage_size(arch)
+        final_path = os.path.join(target_dir, "nvim.appimage")
+
+        # Create temporary file in the target directory
+        with tempfile.NamedTemporaryFile(dir=target_dir, delete=False) as temp_file:
+            try:
+                logging.info(f"Downloading Neovim AppImage from {download_url}")
+                response = requests.get(download_url, stream=True)
+                response.raise_for_status()
+
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        temp_file.write(chunk)
+                temp_file.flush()
+
+                # Make the temporary file executable
+                os.chmod(temp_file.name, 0o755)
+
+                # Validate the downloaded file
+                if not self.validate_appimage(temp_file.name, expected_size):
+                    os.unlink(temp_file.name)
+                    logging.error("Downloaded file validation failed")
+                    return False
+
+                # Move the temporary file to the final location
+                shutil.move(temp_file.name, final_path)
+                logging.info(
+                    f"Successfully updated Neovim to {self.latest_release.tag_name}"
+                )
+                return True
+
+            except Exception as e:
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+                logging.error(f"Failed to download/validate Neovim: {e}")
+                return False
+
+
 def setup_directories():
     """Ensure the Neovim directory exists."""
     if not os.path.exists(NVIM_DIR):
         os.makedirs(NVIM_DIR)
         logging.debug(f"Created directory {NVIM_DIR}")
+
 
 def update_symlink():
     """Update the symbolic link in /usr/bin for Neovim if necessary."""
@@ -62,6 +361,7 @@ def update_symlink():
     if symlink_updated:
         refresh_shell_cache()
 
+
 def refresh_shell_cache():
     """Refresh the shell's command cache if using Bash or Zsh."""
     shell = os.environ.get("SHELL", "").lower()
@@ -73,6 +373,7 @@ def refresh_shell_cache():
         logging.debug(
             "If 'nvim' command doesn't work, you may need to restart your shell or run a shell-specific cache refresh command."
         )
+
 
 def extract_appimage():
     """Extract the Neovim AppImage and setup symbolic links."""
@@ -91,23 +392,45 @@ def extract_appimage():
     logging.debug("Extraction complete")
     update_symlink()
 
+
 def download_nvim():
     """Download and update the Neovim AppImage."""
-    nvim_appimage_path = os.path.join(NVIM_DIR, "nvim.appimage")
-    logging.debug("Attempting to download new version of Neovim AppImage")
-    response = requests.get("https://github.com/neovim/neovim/releases/latest/download/nvim.appimage", stream=True)
-    if response.status_code == 200:
-        with open(nvim_appimage_path, "wb") as f:
-            shutil.copyfileobj(response.raw, f)
-        os.chmod(nvim_appimage_path, 0o755)  # Ensure the downloaded file is executable
-        logging.debug("Download complete and permissions set")
-        extract_appimage()
-    else:
-        logging.error(f"Failed to download Neovim AppImage: HTTP {response.status_code}")
+    setup_directories()
+    try:
+        logging.debug("Attempting to download new version of Neovim AppImage")
+        manager = ReleaseManager()
+        success = manager.download_latest(NVIM_DIR)
+        if success:
+            extract_appimage()
+            return True
+        return False
+    except Exception as e:
+        logging.error(f"Failed to download Neovim: {e}")
+        return False
+
 
 def is_nvim_installed_correctly():
     """Check if Neovim is installed correctly."""
     return os.path.exists(os.path.join(NVIM_DIR, "squashfs-root/AppRun"))
+
+
+def get_installed_version() -> Optional[str]:
+    """Get the installed Neovim version by running nvim --version."""
+    try:
+        result = run(
+            [APPRUN_PATH, "--version"], stdout=PIPE, stderr=PIPE, text=True, timeout=5
+        )
+
+        if result.returncode == 0:
+            # Parse output looking for "NVIM v0.10.2"
+            first_line = result.stdout.splitlines()[0]
+            if first_line.startswith("NVIM v"):
+                return first_line.split("NVIM v")[1].split()[0]
+    except Exception as e:
+        logging.debug(f"Failed to get installed version: {e}")
+
+    return None
+
 
 def setup_crontab():
     """Set up a crontab entry to run the update script nightly."""
@@ -125,44 +448,52 @@ def setup_crontab():
     else:
         logging.debug("Crontab entry for nightly updates already exists")
 
+
 def check_update():
     """Check for updates to Neovim and download if a newer version is found."""
     setup_directories()
     logging.debug("Checking for new Neovim releases")
-    current_version_url = "https://api.github.com/repos/neovim/neovim/releases/latest"
-    response = requests.get(current_version_url)
-    if response.status_code != 200:
-        logging.error(f"Failed to fetch latest Neovim version: HTTP {response.status_code}")
-        return False, False  # No update performed
 
-    latest_version = response.json().get("tag_name", "")
-    version_file_path = os.path.join(NVIM_DIR, "version.txt")
+    try:
+        manager = ReleaseManager()
+        latest = manager.fetch_latest_release()
+        current_version = get_installed_version()
 
-    if not os.path.exists(version_file_path):
-        with open(version_file_path, "w") as file:
-            file.write("None")
-        logging.debug("Version file created")
+        if current_version is None:
+            logging.info(
+                "No existing Neovim installation found or version check failed"
+            )
+            if download_nvim():
+                logging.info(f"Installed Neovim version {latest.tag_name}")
+                return True, True
+            return False, False
 
-    with open(version_file_path, "r") as file:
-        current_version = file.read().strip()
+        # Strip 'v' prefix if present for comparison
+        current_version = current_version.lstrip("v")
+        latest_version = latest.tag_name.lstrip("v")
 
-    nvim_updated = False
-    if current_version != latest_version or not is_nvim_installed_correctly():
-        logging.info(
-            f"Neovim update detected. Current version: {current_version}, Latest version: {latest_version}"
-        )
-        download_nvim()
-        with open(version_file_path, "w") as file:
-            file.write(latest_version)
-        logging.info("Neovim has been updated.")
-        nvim_updated = True
-    else:
-        logging.info("Neovim is already up to date.")
+        nvim_updated = False
+        if current_version != latest_version or not is_nvim_installed_correctly():
+            logging.info(
+                f"Neovim update detected. Current version: {current_version}, Latest version: {latest_version}"
+            )
+            if download_nvim():
+                logging.info("Neovim has been updated.")
+                nvim_updated = True
+            else:
+                logging.error("Failed to update Neovim")
+                return False, False
+        else:
+            logging.info("Neovim is already up to date.")
 
-    # Ensure symlink is correct even if no update was needed
-    update_symlink()
+        # Ensure symlink is correct even if no update was needed
+        update_symlink()
 
-    return nvim_updated, True  # Neovim status and success
+        return nvim_updated, True  # Neovim status and success
+    except Exception as e:
+        logging.error(f"Failed to check for updates: {e}")
+        return False, False  # Neovim status and success
+
 
 def install_script():
     """Copy the script to /opt/nvim/update.py if it doesn't exist."""
@@ -176,9 +507,11 @@ def install_script():
     else:
         logging.debug(f"Script already installed at {INSTALL_PATH}")
 
+
 def is_git_installed():
     """Check if git is installed on the system."""
     return shutil.which("git") is not None
+
 
 def is_correct_git_repo(directory, expected_remote):
     """Check if the given directory is a git repo with the expected remote."""
@@ -193,6 +526,7 @@ def is_correct_git_repo(directory, expected_remote):
     )
     return result.returncode == 0 and result.stdout.strip() == expected_remote
 
+
 def clone_config_repo():
     """Clone the Neovim configuration repository."""
     logging.debug(f"Cloning Neovim config repository to {CONFIG_DIR}")
@@ -205,7 +539,10 @@ def clone_config_repo():
     if result.returncode == 0:
         logging.info("Neovim configuration has been cloned successfully.")
     else:
-        logging.error(f"Failed to clone Neovim configuration repository: {result.stderr}")
+        logging.error(
+            f"Failed to clone Neovim configuration repository: {result.stderr}"
+        )
+
 
 def update_config():
     """Update the Neovim configuration repository."""
@@ -235,7 +572,9 @@ def update_config():
             # Split on the first space to separate the status and the file path
             parts = line.split(maxsplit=1)
             if len(parts) == 2:
-                status = parts[0].strip().lower()  # Get the status part (e.g., 'm', 'a')
+                status = (
+                    parts[0].strip().lower()
+                )  # Get the status part (e.g., 'm', 'a')
                 file_path = parts[1]  # Keep the file path
 
                 # Check if the file is modified ('m') or added ('a')
@@ -248,7 +587,9 @@ def update_config():
                     if os.path.exists(abs_file_path):
                         os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
                         shutil.copy2(abs_file_path, backup_file_path)
-                        logging.debug(f"Backed up {abs_file_path} to {backup_file_path}")
+                        logging.debug(
+                            f"Backed up {abs_file_path} to {backup_file_path}"
+                        )
                 else:
                     logging.debug(f"Skipping file with status {status}: {file_path}")
             else:
@@ -276,6 +617,7 @@ def update_config():
         logging.error(f"Failed to fetch the latest remote changes: {result.stderr}")
         return
 
+
 def clone_or_update_config_repo():
     """Clone the Neovim configuration repository or update if it exists."""
     if not is_git_installed():
@@ -297,6 +639,7 @@ def clone_or_update_config_repo():
             clone_config_repo()
     else:
         clone_config_repo()
+
 
 def create_update_alias():
     """Create an alias for instant config updates."""
@@ -327,7 +670,7 @@ def create_update_alias():
         try:
             os.system(f"source {rc_file}")
             logging.debug(
-                f"Shell configuration reloaded. The 'update-nvim-config' alias should now be available."
+                "Shell configuration reloaded. The 'update-nvim-config' alias should now be available."
             )
         except Exception as e:
             logging.error(f"Failed to reload shell configuration: {e}")
@@ -338,6 +681,7 @@ def create_update_alias():
     logging.debug(
         "To use the 'update-nvim-config' alias in new terminal sessions, no further action is needed."
     )
+
 
 def handle_self_update():
     """Handle self-update by replacing the running script with the new version."""
@@ -368,11 +712,16 @@ chmod +x "{current_script}"
 
             # Execute the replace script in the background
             call([replace_script_path, "&"], shell=True)
-            logging.info("Neovim has been updated. The update script will be refreshed shortly.")
+            logging.info(
+                "Neovim has been updated. The update script will be refreshed shortly."
+            )
         else:
-            logging.error(f"Failed to download the new update script: HTTP {response.status_code}")
+            logging.error(
+                f"Failed to download the new update script: HTTP {response.status_code}"
+            )
     except Exception as e:
         logging.error(f"Error during self-update: {e}")
+
 
 def check_self_update():
     """Check if the update script has been updated and handle self-update."""
@@ -382,20 +731,27 @@ def check_self_update():
     # Fetch the latest script metadata
     response = requests.head(UPDATE_SCRIPT_URL)
     if response.status_code != 200:
-        logging.error(f"Failed to fetch update script metadata: HTTP {response.status_code}")
+        logging.error(
+            f"Failed to fetch update script metadata: HTTP {response.status_code}"
+        )
         return
 
     # Get the Last-Modified header
-    latest_mtime_str = response.headers.get('Last-Modified', '')
+    latest_mtime_str = response.headers.get("Last-Modified", "")
     if latest_mtime_str:
         try:
-            latest_mtime = datetime.datetime.strptime(latest_mtime_str, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
+            latest_mtime = datetime.datetime.strptime(
+                latest_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
+            ).timestamp()
         except ValueError:
             # If timezone information is missing or incorrect, try without it
-            latest_mtime = datetime.datetime.strptime(latest_mtime_str, "%a, %d %b %Y %H:%M:%S").timestamp()
+            latest_mtime = datetime.datetime.strptime(
+                latest_mtime_str, "%a, %d %b %Y %H:%M:%S"
+            ).timestamp()
 
         if latest_mtime > current_mtime:
             handle_self_update()
+
 
 def uninstall():
     """Remove the crontab entries, symlink, /opt/nvim directory, and config directory."""
@@ -443,6 +799,7 @@ os.remove("{__file__}")
 
     logging.info("Uninstallation complete")
 
+
 def main():
     if args.uninstall:
         uninstall()
@@ -473,9 +830,7 @@ def main():
         logging.debug("Initial setup complete.")
         logging.debug(f"The script has been installed to {INSTALL_PATH}")
         if not current_script_path.startswith(NVIM_DIR):
-            logging.debug(
-                f"You can safely delete this script at {current_script_path}"
-            )
+            logging.debug(f"You can safely delete this script at {current_script_path}")
         logging.debug(
             f"Future updates will be handled by the installed script at {INSTALL_PATH}"
         )
@@ -485,6 +840,7 @@ def main():
 
     if not nvim_status:
         logging.error("Failed to update Neovim.")
+
 
 if __name__ == "__main__":
     main()
