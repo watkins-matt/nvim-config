@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from crontab import CronTab
 from dataclasses import dataclass
 from enum import Enum
@@ -15,6 +14,7 @@ import shutil
 import sys
 import tempfile
 import time
+import platform
 
 # Configure argument parsing
 parser = argparse.ArgumentParser(description="Neovim Updater Script")
@@ -41,14 +41,18 @@ SYMLINK_PATH = "/usr/bin/nvim"
 APPRUN_PATH = "/opt/nvim/squashfs-root/AppRun"
 CONFIG_REPO = "https://github.com/watkins-matt/nvim-config.git"
 CONFIG_DIR = os.path.expanduser("~/.config/nvim")
-UPDATE_SCRIPT_URL = "https://raw.githubusercontent.com/watkins-matt/nvim-config/refs/heads/main/update.py"
+UPDATE_SCRIPT_URL = (
+    "https://raw.githubusercontent.com/watkins-matt/nvim-config/refs/heads/main/update.py"
+)
 
 
 class Architecture(Enum):
+    """Represents supported CPU architectures for AppImage assets."""
+
     X86_64 = ("x86_64", ["x86_64", "amd64", "x86-64"])
     ARM64 = ("arm64", ["arm64", "aarch64", "armv8"])
 
-    def __init__(self, canonical: str, matches: List[str]):
+    def __init__(self, canonical: str, matches: List[str]) -> None:
         self.canonical = canonical
         self.matches = matches
         # Pre-compile regex patterns for each architecture match
@@ -59,27 +63,21 @@ class Architecture(Enum):
     @classmethod
     def detect_current(cls) -> "Architecture":
         """Detect the current system architecture."""
-        import platform
-
         machine = platform.machine().lower()
-
         # Try to match the machine architecture against known patterns
         for arch in cls:
             if any(pattern.search(machine) for pattern in arch.patterns):
                 return arch
-
         raise ValueError(f"Unsupported architecture: {machine}")
 
     @classmethod
     def detect_from_name(cls, name: str) -> Optional["Architecture"]:
         """Try to detect architecture from an asset name."""
         name_lower = name.lower()
-
         # Try to match against known architecture patterns
         for arch in cls:
             if any(pattern.search(name_lower) for pattern in arch.patterns):
                 return arch
-
         return None
 
 
@@ -134,40 +132,33 @@ class ReleaseInfo:
         Find the AppImage asset for the specified architecture using flexible matching.
 
         The matching algorithm:
-        1. Looks for files ending in .appimage
-        2. Tries to detect architecture from the filename
-        3. Prioritizes files that:
-           - Contain 'linux' in the name
-           - Match the requested architecture
-           - Don't contain 'zsync' or other metadata extensions
+         1. Looks for files ending in .appimage
+         2. Tries to detect architecture from the filename
+         3. Prioritizes files that:
+            - Contain 'linux' in the name
+            - Match the requested architecture
+            - Don't contain 'zsync' or other metadata extensions
         """
         appimage_assets = []
-
         for asset in self.assets:
             name_lower = asset.name.lower()
-
             # Skip non-AppImage and metadata files
             if not name_lower.endswith(".appimage") or ".appimage." in name_lower:
                 continue
-
             # Try to detect architecture from the filename
             detected_arch = Architecture.detect_from_name(name_lower)
             if detected_arch is None:
                 continue
-
             # Score this asset based on various factors
             score = 0
             if detected_arch == arch:
                 score += 10
             if "linux" in name_lower:
                 score += 5
-
             appimage_assets.append((score, asset))
-
         # Sort by score and return the best match
         if appimage_assets:
             return sorted(appimage_assets, key=lambda x: x[0], reverse=True)[0][1]
-
         return None
 
     def get_appimage_url(
@@ -191,10 +182,9 @@ class ReleaseManager:
     GITHUB_API_URL = "https://api.github.com/repos/neovim/neovim/releases/latest"
     MIN_APPIMAGE_SIZE = 10 * 1024 * 1024  # 10MB minimum size
     CACHE_DURATION = 3600  # Cache duration in seconds (1 hour)
-
     _api_cache = {}  # Class-level cache dictionary
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.latest_release: Optional[ReleaseInfo] = None
 
     @classmethod
@@ -209,11 +199,10 @@ class ReleaseManager:
             # Cache expired
             del cls._api_cache[url]
             return None
-
         return data
 
     @classmethod
-    def _cache_response(cls, url: str, data: Dict):
+    def _cache_response(cls, url: str, data: Dict) -> None:
         """Cache response data with current timestamp."""
         cls._api_cache[url] = (time.time(), data)
 
@@ -242,7 +231,9 @@ class ReleaseManager:
         return self.latest_release
 
     @staticmethod
-    def validate_appimage(file_path: str, expected_size: Optional[int] = None) -> bool:
+    def validate_appimage(
+        file_path: str, expected_size: Optional[int] = None
+    ) -> bool:
         """
         Validate the AppImage file.
 
@@ -251,7 +242,7 @@ class ReleaseManager:
             expected_size: Expected file size in bytes (if known)
 
         Returns:
-            bool: True if the file is valid, False otherwise
+            True if the file is valid, False otherwise
         """
         if not os.path.exists(file_path):
             return False
@@ -273,7 +264,9 @@ class ReleaseManager:
 
         return True
 
-    def download_latest(self, target_dir: str, arch: Architecture = None) -> bool:
+    def download_latest(
+        self, target_dir: str, arch: Optional[Architecture] = None
+    ) -> bool:
         """
         Download the latest Neovim AppImage.
 
@@ -282,7 +275,7 @@ class ReleaseManager:
             arch: Target architecture (defaults to system architecture)
 
         Returns:
-            bool: True if update successful, False otherwise
+            True if update successful, False otherwise
         """
         if arch is None:
             arch = Architecture.detect_current()
@@ -332,514 +325,502 @@ class ReleaseManager:
                 return False
 
 
-def setup_directories():
-    """Ensure the Neovim directory exists."""
-    if not os.path.exists(NVIM_DIR):
-        os.makedirs(NVIM_DIR)
-        logging.debug(f"Created directory {NVIM_DIR}")
+class NvimUpdater:
+    """Handles updating the Neovim AppImage, extraction, and symlink updates."""
 
+    def __init__(
+        self,
+        nvim_dir: str = NVIM_DIR,
+        symlink_path: str = SYMLINK_PATH,
+        apprun_path: str = APPRUN_PATH,
+    ) -> None:
+        self.nvim_dir = nvim_dir
+        self.symlink_path = symlink_path
+        self.apprun_path = apprun_path
 
-def update_symlink():
-    """Update the symbolic link in /usr/bin for Neovim if necessary."""
-    symlink_updated = False
+    @property
+    def appimage_path(self) -> str:
+        """Return the path to the downloaded AppImage."""
+        return os.path.join(self.nvim_dir, "nvim.appimage")
 
-    # Remove old symlink in /opt/nvim if it exists
-    old_symlink = "/opt/nvim/nvim"
-    if os.path.islink(old_symlink):
-        os.unlink(old_symlink)
-        logging.debug(f"Removed old symlink: {old_symlink}")
-        symlink_updated = True
+    @property
+    def extract_path(self) -> str:
+        """Return the extraction directory for the AppImage."""
+        return os.path.join(self.nvim_dir, "squashfs-root")
 
-    # Check if the symlink needs to be updated
-    if not os.path.islink(SYMLINK_PATH) or os.readlink(SYMLINK_PATH) != APPRUN_PATH:
-        if os.path.exists(SYMLINK_PATH):
-            os.remove(SYMLINK_PATH)
-        os.symlink(APPRUN_PATH, SYMLINK_PATH)
-        logging.debug(f"Updated symlink: {SYMLINK_PATH} -> {APPRUN_PATH}")
-        symlink_updated = True
+    def download_and_install(self) -> bool:
+        """
+        Download the latest Neovim AppImage and install it.
 
-    if symlink_updated:
-        refresh_shell_cache()
-
-
-def refresh_shell_cache():
-    """Refresh the shell's command cache if using Bash or Zsh."""
-    shell = os.environ.get("SHELL", "").lower()
-    if "bash" in shell or "zsh" in shell:
-        os.system("hash -r")
-        logging.debug("Refreshed shell's command cache with 'hash -r'")
-    else:
-        logging.debug("Shell command cache refresh may be needed.")
-        logging.debug(
-            "If 'nvim' command doesn't work, you may need to restart your shell or run a shell-specific cache refresh command."
-        )
-
-
-def extract_appimage():
-    """Extract the Neovim AppImage and setup symbolic links."""
-    appimage_path = os.path.join(NVIM_DIR, "nvim.appimage")
-    extract_path = os.path.join(NVIM_DIR, "squashfs-root")
-
-    if os.path.exists(extract_path):
-        logging.debug("Removing old extracted AppImage directory")
-        shutil.rmtree(extract_path)
-
-    logging.debug("Extracting AppImage")
-    os.chdir(NVIM_DIR)
-    with open(os.devnull, "w") as FNULL:
-        call([appimage_path, "--appimage-extract"], stdout=FNULL, stderr=FNULL)
-
-    logging.debug("Extraction complete")
-    update_symlink()
-
-
-def download_nvim():
-    """Download and update the Neovim AppImage."""
-    setup_directories()
-    try:
-        logging.debug("Attempting to download new version of Neovim AppImage")
+        Returns:
+            True if the update and installation succeeded, False otherwise.
+        """
         manager = ReleaseManager()
-        success = manager.download_latest(NVIM_DIR)
-        if success:
-            extract_appimage()
-            return True
-        return False
-    except Exception as e:
-        logging.error(f"Failed to download Neovim: {e}")
-        return False
+        if not manager.download_latest(self.nvim_dir):
+            return False
+        self.extract_appimage()
+        self.update_symlink()
+        return True
 
+    def extract_appimage(self) -> None:
+        """Extract the downloaded Neovim AppImage."""
+        if os.path.exists(self.extract_path):
+            logging.debug("Removing old extracted AppImage directory")
+            shutil.rmtree(self.extract_path)
+        logging.debug("Extracting AppImage")
+        os.chdir(self.nvim_dir)
+        with open(os.devnull, "w") as FNULL:
+            call([self.appimage_path, "--appimage-extract"], stdout=FNULL, stderr=FNULL)
+        logging.debug("Extraction complete")
 
-def is_nvim_installed_correctly():
-    """Check if Neovim is installed correctly."""
-    return os.path.exists(os.path.join(NVIM_DIR, "squashfs-root/AppRun"))
+    def update_symlink(self) -> None:
+        """Update the symbolic link for Neovim."""
+        symlink_updated = False
+        old_symlink = os.path.join(self.nvim_dir, "nvim")
+        if os.path.islink(old_symlink):
+            os.unlink(old_symlink)
+            logging.debug(f"Removed old symlink: {old_symlink}")
+            symlink_updated = True
 
+        if not os.path.islink(self.symlink_path) or os.readlink(self.symlink_path) != self.apprun_path:
+            if os.path.exists(self.symlink_path):
+                os.remove(self.symlink_path)
+            os.symlink(self.apprun_path, self.symlink_path)
+            logging.debug(f"Updated symlink: {self.symlink_path} -> {self.apprun_path}")
+            symlink_updated = True
 
-def get_installed_version() -> Optional[str]:
-    """Get the installed Neovim version by running nvim --version."""
-    try:
-        result = run(
-            [APPRUN_PATH, "--version"], stdout=PIPE, stderr=PIPE, text=True, timeout=5
-        )
+        if symlink_updated:
+            self.refresh_shell_cache()
 
-        if result.returncode == 0:
-            # Parse output looking for "NVIM v0.10.2"
-            first_line = result.stdout.splitlines()[0]
-            if first_line.startswith("NVIM v"):
-                return first_line.split("NVIM v")[1].split()[0]
-    except Exception as e:
-        logging.debug(f"Failed to get installed version: {e}")
-
-    return None
-
-
-def setup_crontab():
-    """Set up a crontab entry to run the update script nightly."""
-    cron = CronTab(user=True)
-    update_command = f"python3 {INSTALL_PATH}"
-
-    # Check if the job already exists
-    update_job = next((job for job in cron if job.command == update_command), None)
-
-    if not update_job:
-        update_job = cron.new(command=update_command)
-        update_job.setall("0 2 * * *")  # Run at 2 AM every day
-        cron.write()
-        logging.debug("Crontab entry added for nightly Neovim and config updates")
-    else:
-        logging.debug("Crontab entry for nightly updates already exists")
-
-
-def check_update():
-    """Check for updates to Neovim and download if a newer version is found."""
-    setup_directories()
-    logging.debug("Checking for new Neovim releases")
-
-    try:
-        manager = ReleaseManager()
-        latest = manager.fetch_latest_release()
-        current_version = get_installed_version()
-
-        if current_version is None:
-            logging.info(
-                "No existing Neovim installation found or version check failed"
-            )
-            if download_nvim():
-                logging.info(f"Installed Neovim version {latest.tag_name}")
-                return True, True
-            return False, False
-
-        # Strip 'v' prefix if present for comparison
-        current_version = current_version.lstrip("v")
-        latest_version = latest.tag_name.lstrip("v")
-
-        nvim_updated = False
-        if current_version != latest_version or not is_nvim_installed_correctly():
-            logging.info(
-                f"Neovim update detected. Current version: {current_version}, Latest version: {latest_version}"
-            )
-            if download_nvim():
-                logging.info("Neovim has been updated.")
-                nvim_updated = True
-            else:
-                logging.error("Failed to update Neovim")
-                return False, False
+    def refresh_shell_cache(self) -> None:
+        """Refresh the shell's command cache if using Bash or Zsh."""
+        shell = os.environ.get("SHELL", "").lower()
+        if "bash" in shell or "zsh" in shell:
+            os.system("hash -r")
+            logging.debug("Refreshed shell's command cache with 'hash -r'")
         else:
-            logging.info("Neovim is already up to date.")
+            logging.debug("Shell command cache refresh may be needed. "
+                          "Restart your shell if the 'nvim' command is not found.")
 
-        # Ensure symlink is correct even if no update was needed
-        update_symlink()
+    def get_installed_version(self) -> Optional[str]:
+        """
+        Get the installed Neovim version by running the AppRun executable.
 
-        return nvim_updated, True  # Neovim status and success
-    except Exception as e:
-        logging.error(f"Failed to check for updates: {e}")
-        return False, False  # Neovim status and success
-
-
-def install_script():
-    """Copy the script to /opt/nvim/update.py if it doesn't exist."""
-    # Ensure the directory exists
-    os.makedirs(os.path.dirname(INSTALL_PATH), exist_ok=True)
-
-    if not os.path.exists(INSTALL_PATH):
-        shutil.copy2(__file__, INSTALL_PATH)
-        os.chmod(INSTALL_PATH, 0o755)  # Make the script executable
-        logging.debug(f"Script installed to {INSTALL_PATH}")
-    else:
-        logging.debug(f"Script already installed at {INSTALL_PATH}")
-
-
-def is_git_installed():
-    """Check if git is installed on the system."""
-    return shutil.which("git") is not None
-
-
-def is_correct_git_repo(directory, expected_remote):
-    """Check if the given directory is a git repo with the expected remote."""
-    if not os.path.exists(os.path.join(directory, ".git")):
-        return False
-
-    result = run(
-        ["git", "-C", directory, "remote", "get-url", "origin"],
-        stdout=PIPE,
-        stderr=PIPE,
-        universal_newlines=True,
-    )
-    return result.returncode == 0 and result.stdout.strip() == expected_remote
-
-
-def clone_config_repo():
-    """Clone the Neovim configuration repository."""
-    logging.debug(f"Cloning Neovim config repository to {CONFIG_DIR}")
-    result = run(
-        ["git", "clone", CONFIG_REPO, CONFIG_DIR],
-        stdout=PIPE,
-        stderr=PIPE,
-        universal_newlines=True,
-    )
-    if result.returncode == 0:
-        logging.info("Neovim configuration has been cloned successfully.")
-    else:
-        logging.error(
-            f"Failed to clone Neovim configuration repository: {result.stderr}"
-        )
-
-
-def update_config():
-    """Update the Neovim configuration repository."""
-    logging.debug("Updating Neovim configuration repository")
-    os.chdir(CONFIG_DIR)
-
-    # Check for local changes
-    result = run(
-        ["git", "status", "--porcelain"],
-        stdout=PIPE,
-        stderr=PIPE,
-        universal_newlines=True,
-    )
-    modified_files = result.stdout.strip().splitlines()
-
-    if modified_files:
-        # Create a timestamped backup directory
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = os.path.expanduser(f"~/nvim_config_backup/{timestamp}/")
-        os.makedirs(backup_dir, exist_ok=True)
-        logging.debug(
-            f"Local changes detected in Neovim config repository. Backing up to {backup_dir}"
-        )
-
-        # Backup modified or added files to the timestamped directory
-        for line in modified_files:
-            # Split on the first space to separate the status and the file path
-            parts = line.split(maxsplit=1)
-            if len(parts) == 2:
-                status = (
-                    parts[0].strip().lower()
-                )  # Get the status part (e.g., 'm', 'a')
-                file_path = parts[1]  # Keep the file path
-
-                # Check if the file is modified ('m') or added ('a')
-                if status in ["m", "a"]:
-                    abs_file_path = os.path.join(CONFIG_DIR, file_path)
-                    backup_file_path = os.path.join(backup_dir, file_path)
-
-                    # Log and back up the modified or added file
-                    logging.debug(f"Backing up {status} file: {abs_file_path}")
-                    if os.path.exists(abs_file_path):
-                        os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
-                        shutil.copy2(abs_file_path, backup_file_path)
-                        logging.debug(
-                            f"Backed up {abs_file_path} to {backup_file_path}"
-                        )
-                else:
-                    logging.debug(f"Skipping file with status {status}: {file_path}")
-            else:
-                logging.error(f"Failed to parse line from git status: {line}")
-
-    # Fetch the latest changes from the remote
-    result = run(["git", "fetch"], stdout=PIPE, stderr=PIPE, universal_newlines=True)
-    if result.returncode == 0:
-        # Perform a hard reset to the latest commit on the current branch
-        run(["git", "reset", "--hard", "origin/HEAD"], stdout=PIPE, stderr=PIPE)
-        logging.debug(
-            "Neovim configuration repository reset to the latest commit on the current branch."
-        )
-
-        # Pull the latest changes from the remote
-        result = run(["git", "pull"], stdout=PIPE, stderr=PIPE, universal_newlines=True)
-        if result.returncode != 0:
-            logging.error(f"Failed to pull the latest changes: {result.stderr}")
-            return
-
-        # Clean untracked files and directories (git clean)
-        run(["git", "clean", "-fd"], stdout=PIPE, stderr=PIPE)
-        logging.debug("Removed untracked files and directories using git clean.")
-    else:
-        logging.error(f"Failed to fetch the latest remote changes: {result.stderr}")
-        return
-
-
-def clone_or_update_config_repo():
-    """Clone the Neovim configuration repository or update if it exists."""
-    if not is_git_installed():
-        logging.error(
-            "Git is not installed. Please install git and run the script again."
-        )
-        sys.exit(1)
-
-    if os.path.exists(CONFIG_DIR):
-        if is_correct_git_repo(CONFIG_DIR, CONFIG_REPO):
-            logging.info("Neovim configuration is up to date.")
-            try:
-                update_config()
-            except Exception as e:
-                logging.error(f"Error updating configuration: {e}")
-        else:
-            logging.debug(f"Removing existing incorrect config directory: {CONFIG_DIR}")
-            shutil.rmtree(CONFIG_DIR)
-            clone_config_repo()
-    else:
-        clone_config_repo()
-
-
-def create_update_alias():
-    """Create an alias for instant config updates."""
-    shell = os.environ.get("SHELL", "").lower()
-    if "bash" in shell:
-        rc_file = os.path.expanduser("~/.bashrc")
-    elif "zsh" in shell:
-        rc_file = os.path.expanduser("~/.zshrc")
-    else:
-        logging.debug("Unsupported shell. Alias creation skipped.")
-        return
-
-    alias_line = f"\nalias update-nvim-config='python3 {INSTALL_PATH} --config'\n"
-
-    alias_added = False
-    with open(rc_file, "a+") as f:
-        f.seek(0)
-        content = f.read()
-        if "alias update-nvim-config" not in content:
-            f.write(alias_line)
-            alias_added = True
-            logging.debug(f"Alias 'update-nvim-config' added to {rc_file}")
-        else:
-            logging.debug("Alias 'update-nvim-config' already exists.")
-
-    if alias_added:
-        # Attempt to reload the shell configuration
+        Returns:
+            The version string if detected, or None otherwise.
+        """
         try:
-            os.system(f"source {rc_file}")
-            logging.debug(
-                "Shell configuration reloaded. The 'update-nvim-config' alias should now be available."
+            result = run(
+                [self.apprun_path, "--version"],
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                timeout=5,
             )
+            if result.returncode == 0:
+                first_line = result.stdout.splitlines()[0]
+                if first_line.startswith("NVIM v"):
+                    return first_line.split("NVIM v")[1].split()[0]
         except Exception as e:
-            logging.error(f"Failed to reload shell configuration: {e}")
-            logging.info(
-                f"Please run the following command to use the new alias in the current session:\n    source {rc_file}"
+            logging.debug(f"Failed to get installed version: {e}")
+        return None
+
+    def is_installed_correctly(self) -> bool:
+        """
+        Check if Neovim is installed correctly by verifying the AppRun file.
+
+        Returns:
+            True if AppRun exists, False otherwise.
+        """
+        return os.path.exists(self.apprun_path)
+
+
+class ConfigRepoManager:
+    """Manages cloning and updating of the Neovim configuration repository."""
+
+    def __init__(
+        self,
+        config_dir: str = CONFIG_DIR,
+        repo_url: str = CONFIG_REPO,
+    ) -> None:
+        self.config_dir = config_dir
+        self.repo_url = repo_url
+
+    @staticmethod
+    def is_git_installed() -> bool:
+        """
+        Check if git is installed on the system.
+
+        Returns:
+            True if git is available, False otherwise.
+        """
+        return shutil.which("git") is not None
+
+    def is_correct_git_repo(self) -> bool:
+        """
+        Check if the configuration directory is a git repo with the expected remote.
+
+        Returns:
+            True if the repo is correct, False otherwise.
+        """
+        git_dir = os.path.join(self.config_dir, ".git")
+        if not os.path.exists(git_dir):
+            return False
+        result = run(
+            ["git", "-C", self.config_dir, "remote", "get-url", "origin"],
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True,
+        )
+        return result.returncode == 0 and result.stdout.strip() == self.repo_url
+
+    def clone_repo(self) -> None:
+        """
+        Clone the configuration repository into the designated directory.
+        """
+        logging.debug(f"Cloning config repo to {self.config_dir}")
+        result = run(
+            ["git", "clone", self.repo_url, self.config_dir],
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            logging.info("Config repository cloned successfully.")
+        else:
+            logging.error(f"Failed to clone config repo: {result.stderr}")
+
+    def update_repo(self) -> None:
+        """
+        Update the configuration repository, backing up local changes if necessary.
+        """
+        logging.debug("Updating config repository")
+        os.chdir(self.config_dir)
+        result = run(
+            ["git", "status", "--porcelain"],
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True,
+        )
+        modified_files = result.stdout.strip().splitlines()
+        if modified_files:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.expanduser(f"~/nvim_config_backup/{timestamp}/")
+            os.makedirs(backup_dir, exist_ok=True)
+            logging.debug(f"Local changes detected. Backing up to {backup_dir}")
+            for line in modified_files:
+                parts = line.split(maxsplit=1)
+                if len(parts) == 2:
+                    status = parts[0].strip().lower()
+                    file_path = parts[1]
+                    if status in ["m", "a"]:
+                        abs_file_path = os.path.join(self.config_dir, file_path)
+                        backup_file_path = os.path.join(backup_dir, file_path)
+                        logging.debug(f"Backing up {status} file: {abs_file_path}")
+                        if os.path.exists(abs_file_path):
+                            os.makedirs(os.path.dirname(backup_file_path), exist_ok=True)
+                            shutil.copy2(abs_file_path, backup_file_path)
+                            logging.debug(
+                                f"Backed up {abs_file_path} to {backup_file_path}"
+                            )
+                    else:
+                        logging.debug(f"Skipping file with status {status}: {file_path}")
+                else:
+                    logging.error(f"Failed to parse git status line: {line}")
+        result = run(["git", "fetch"], stdout=PIPE, stderr=PIPE, text=True)
+        if result.returncode == 0:
+            run(
+                ["git", "reset", "--hard", "origin/HEAD"],
+                stdout=PIPE,
+                stderr=PIPE,
             )
+            logging.debug("Repository reset to latest commit.")
+            result = run(["git", "pull"], stdout=PIPE, stderr=PIPE, text=True)
+            if result.returncode != 0:
+                logging.error(f"Failed to pull changes: {result.stderr}")
+                return
+            run(["git", "clean", "-fd"], stdout=PIPE, stderr=PIPE)
+            logging.debug("Cleaned untracked files with git clean.")
+        else:
+            logging.error(f"Failed to fetch remote changes: {result.stderr}")
 
-    logging.debug(
-        "To use the 'update-nvim-config' alias in new terminal sessions, no further action is needed."
-    )
+    def clone_or_update(self) -> None:
+        """
+        Clone the configuration repository if not present, or update it if it exists.
+        """
+        if not self.is_git_installed():
+            logging.error("Git is not installed. Please install git and retry.")
+            sys.exit(1)
+        if os.path.exists(self.config_dir):
+            if self.is_correct_git_repo():
+                logging.info("Config repository is up to date.")
+                try:
+                    self.update_repo()
+                except Exception as e:
+                    logging.error(f"Error updating config: {e}")
+            else:
+                logging.debug(f"Removing incorrect config directory: {self.config_dir}")
+                shutil.rmtree(self.config_dir)
+                self.clone_repo()
+        else:
+            self.clone_repo()
 
 
-def handle_self_update():
-    """Handle self-update by replacing the running script with the new version."""
-    current_script = os.path.abspath(__file__)
-    temp_dir = tempfile.gettempdir()
-    temp_script = os.path.join(temp_dir, "update_new.py")
+class SelfUpdater:
+    """Handles self-updating of the update script by comparing file contents
+    across multiple target locations.
+    """
 
-    # Download the new script
-    try:
-        response = requests.get(UPDATE_SCRIPT_URL)
-        if response.status_code == 200:
+    def __init__(
+        self,
+        target_scripts: Optional[List[str]] = None,
+        update_script_url: str = UPDATE_SCRIPT_URL,
+    ) -> None:
+        """
+        Initialize with a list of target script paths to update.
+
+        Args:
+            target_scripts: List of file paths to update. If None, defaults to
+                            [INSTALL_PATH, ~/.config/nvim/update.py].
+            update_script_url: URL to download the latest update script.
+        """
+        if target_scripts is None:
+            self.target_scripts = [
+                INSTALL_PATH,
+                os.path.join(os.path.expanduser("~/.config/nvim"), "update.py"),
+            ]
+        else:
+            self.target_scripts = target_scripts
+        self.update_script_url = update_script_url
+
+    def check_and_update(self) -> None:
+        """
+        Download the new version of the update script and compare contents with
+        each target script. If any differences are found, schedule an update.
+        """
+        try:
+            response = requests.get(self.update_script_url)
+            if response.status_code != 200:
+                logging.error(
+                    f"Failed to download update script: HTTP {response.status_code}"
+                )
+                return
+            new_content = response.text
+            for script in self.target_scripts:
+                try:
+                    with open(script, "r") as f:
+                        current_content = f.read()
+                    if new_content != current_content:
+                        logging.info(
+                            f"New update script version detected in {script}."
+                        )
+                        self.perform_update(script, new_content)
+                    else:
+                        logging.debug(f"Script at {script} is already up to date.")
+                except Exception as e:
+                    logging.error(f"Failed to check script at {script}: {e}")
+        except Exception as e:
+            logging.error(f"Self-update check failed: {e}")
+
+    def perform_update(self, target_script: str, new_content: str) -> None:
+        """
+        Write the new script content to a temporary file and schedule its replacement
+        for the given target script.
+
+        Args:
+            target_script: The file path to update.
+            new_content: The new script content.
+        """
+        temp_dir = tempfile.gettempdir()
+        temp_script = os.path.join(temp_dir, "update_new.py")
+        try:
             with open(temp_script, "w") as f:
-                f.write(response.text)
+                f.write(new_content)
             os.chmod(temp_script, 0o755)
-            logging.debug("Downloaded new version of the update script.")
-
-            # Create a shell script to replace the current script after exit
+            logging.debug(
+                f"Downloaded new update script content for {target_script}."
+            )
             replace_script = f"""#!/bin/bash
 sleep 1
-mv "{temp_script}" "{current_script}"
-chmod +x "{current_script}"
+mv "{temp_script}" "{target_script}"
+chmod +x "{target_script}"
 """
-
             replace_script_path = os.path.join(temp_dir, "replace_update.sh")
             with open(replace_script_path, "w") as f:
                 f.write(replace_script)
             os.chmod(replace_script_path, 0o755)
-
-            # Execute the replace script in the background
             call([replace_script_path, "&"], shell=True)
             logging.info(
-                "Neovim has been updated. The update script will be refreshed shortly."
+                f"Update script at {target_script} will be refreshed shortly."
             )
+        except Exception as e:
+            logging.error(f"Error during self-update for {target_script}: {e}")
+
+
+class SchedulerManager:
+    """Manages scheduling of the update script via crontab."""
+
+    @staticmethod
+    def setup_crontab() -> None:
+        """
+        Set up a crontab entry to run the update script nightly.
+        """
+        cron = CronTab(user=True)
+        update_command = f"python3 {INSTALL_PATH}"
+        # Check if the job already exists
+        job_exists = any(job.command == update_command for job in cron)
+        if not job_exists:
+            job = cron.new(command=update_command)
+            job.setall("0 2 * * *")
+            cron.write()
+            logging.debug("Crontab entry added for nightly updates")
         else:
-            logging.error(
-                f"Failed to download the new update script: HTTP {response.status_code}"
+            logging.debug("Crontab entry for nightly updates already exists")
+
+
+class Installer:
+    """Handles installation and uninstallation of the update script."""
+
+    @staticmethod
+    def install_script() -> None:
+        """
+        Copy the update script to the designated install path if not already present.
+        """
+        os.makedirs(os.path.dirname(INSTALL_PATH), exist_ok=True)
+        if not os.path.exists(INSTALL_PATH):
+            shutil.copy2(__file__, INSTALL_PATH)
+            os.chmod(INSTALL_PATH, 0o755)
+            logging.debug(f"Script installed to {INSTALL_PATH}")
+        else:
+            logging.debug(f"Script already installed at {INSTALL_PATH}")
+
+    @staticmethod
+    def create_update_alias() -> None:
+        """
+        Create a shell alias for updating the Neovim configuration.
+        """
+        shell = os.environ.get("SHELL", "").lower()
+        if "bash" in shell:
+            rc_file = os.path.expanduser("~/.bashrc")
+        elif "zsh" in shell:
+            rc_file = os.path.expanduser("~/.zshrc")
+        else:
+            logging.debug("Unsupported shell. Alias creation skipped.")
+            return
+        alias_line = f"\nalias update-nvim-config='python3 {INSTALL_PATH} --config'\n"
+        alias_added = False
+        with open(rc_file, "a+") as f:
+            f.seek(0)
+            content = f.read()
+            if "alias update-nvim-config" not in content:
+                f.write(alias_line)
+                alias_added = True
+                logging.debug(f"Alias 'update-nvim-config' added to {rc_file}")
+            else:
+                logging.debug("Alias 'update-nvim-config' already exists.")
+        if alias_added:
+            try:
+                os.system(f"source {rc_file}")
+                logging.debug("Shell configuration reloaded with source command.")
+            except Exception as e:
+                logging.error(f"Failed to reload shell configuration: {e}")
+                logging.info(f"Please run 'source {rc_file}' to reload shell config.")
+
+    @staticmethod
+    def uninstall() -> None:
+        """
+        Remove crontab entries, symlink, Neovim directory, and configuration repository.
+        """
+        cron = CronTab(user=True)
+        cron.remove_all(command=f"python3 {INSTALL_PATH}")
+        cron.remove_all(command=f"python3 {INSTALL_PATH} --config")
+        cron.write()
+        logging.debug("Removed crontab entries")
+        if os.path.islink(SYMLINK_PATH):
+            os.unlink(SYMLINK_PATH)
+            logging.debug(f"Removed symlink {SYMLINK_PATH}")
+        dirs_to_remove = [NVIM_DIR, CONFIG_DIR]
+        if os.path.abspath(sys.argv[0]).startswith(os.path.abspath(NVIM_DIR)):
+            logging.debug(
+                f"Script is running from {NVIM_DIR}. Scheduling deletion."
             )
-    except Exception as e:
-        logging.error(f"Error during self-update: {e}")
-
-
-def check_self_update():
-    """Check if the update script has been updated and handle self-update."""
-    # Get the current script's last modified time
-    current_mtime = os.path.getmtime(__file__)
-
-    # Fetch the latest script metadata
-    response = requests.head(UPDATE_SCRIPT_URL)
-    if response.status_code != 200:
-        logging.error(
-            f"Failed to fetch update script metadata: HTTP {response.status_code}"
-        )
-        return
-
-    # Get the Last-Modified header
-    latest_mtime_str = response.headers.get("Last-Modified", "")
-    if latest_mtime_str:
-        try:
-            latest_mtime = datetime.datetime.strptime(
-                latest_mtime_str, "%a, %d %b %Y %H:%M:%S %Z"
-            ).timestamp()
-        except ValueError:
-            # If timezone information is missing or incorrect, try without it
-            latest_mtime = datetime.datetime.strptime(
-                latest_mtime_str, "%a, %d %b %Y %H:%M:%S"
-            ).timestamp()
-
-        if latest_mtime > current_mtime:
-            handle_self_update()
-
-
-def uninstall():
-    """Remove the crontab entries, symlink, /opt/nvim directory, and config directory."""
-    # Remove crontab entries
-    cron = CronTab(user=True)
-    cron.remove_all(command=f"python3 {INSTALL_PATH}")
-    cron.remove_all(command=f"python3 {INSTALL_PATH} --config")
-    cron.write()
-    logging.debug("Removed crontab entries")
-
-    # Remove symlink
-    if os.path.islink(SYMLINK_PATH):
-        os.unlink(SYMLINK_PATH)
-        logging.debug(f"Removed symlink from {SYMLINK_PATH}")
-
-    # Remove /opt/nvim directory and config directory
-    dirs_to_remove = [NVIM_DIR, CONFIG_DIR]
-    if os.path.abspath(sys.argv[0]).startswith(os.path.abspath(NVIM_DIR)):
-        logging.debug(
-            f"Script is running from {NVIM_DIR}. Will delete directories after script completion."
-        )
-        # Create a separate script to delete the directories
-        delete_script = f"""#!/usr/bin/env python3
+            delete_script = f"""#!/usr/bin/env python3
 import shutil
 import os
-
 dirs_to_delete = {dirs_to_remove}
-for dir in dirs_to_delete:
-    if os.path.exists(dir):
-        shutil.rmtree(dir)
-        print(f"Removed directory {{dir}}")
+for d in dirs_to_delete:
+    if os.path.exists(d):
+        shutil.rmtree(d)
+        print(f"Removed directory {{d}}")
 os.remove("{__file__}")
 """
-        delete_script_path = os.path.join(tempfile.gettempdir(), "delete_nvim.py")
-        with open(delete_script_path, "w") as f:
-            f.write(delete_script)
-        os.chmod(delete_script_path, 0o755)
-        # Schedule the delete script to run after this script exits
-        os.system(f"(sleep 1 && python3 {delete_script_path})&")
-    else:
-        for dir in dirs_to_remove:
-            if os.path.exists(dir):
-                shutil.rmtree(dir)
-                logging.debug(f"Removed directory {dir}")
-
-    logging.info("Uninstallation complete")
+            delete_script_path = os.path.join(tempfile.gettempdir(), "delete_nvim.py")
+            with open(delete_script_path, "w") as f:
+                f.write(delete_script)
+            os.chmod(delete_script_path, 0o755)
+            os.system(f"(sleep 1 && python3 {delete_script_path})&")
+        else:
+            for d in dirs_to_remove:
+                if os.path.exists(d):
+                    shutil.rmtree(d)
+                    logging.debug(f"Removed directory {d}")
+        logging.info("Uninstallation complete")
 
 
-def main():
+def main() -> None:
+    """
+    Main entry point that coordinates updates, configuration management,
+    self-update, and scheduling.
+    """
     if args.uninstall:
-        uninstall()
+        Installer.uninstall()
         sys.exit(0)
 
     if args.config:
-        clone_or_update_config_repo()
-        setup_crontab()
+        config_manager = ConfigRepoManager()
+        config_manager.clone_or_update()
+        SchedulerManager.setup_crontab()
         sys.exit(0)
 
-    install_script()
-    nvim_updated, nvim_status = check_update()
-    config_updated = False
+    Installer.install_script()
 
-    # Clone or update config repository
-    try:
-        clone_or_update_config_repo()
-        config_updated = True
-    except Exception as e:
-        logging.error(f"Error updating configuration: {e}")
+    nvim_updater = NvimUpdater(nvim_dir=NVIM_DIR)
+    current_version = nvim_updater.get_installed_version()
+    latest_release = ReleaseManager().fetch_latest_release()
+    if current_version is None or (
+        current_version.lstrip("v")
+        != latest_release.tag_name.lstrip("v")
+    ) or not nvim_updater.is_installed_correctly():
+        logging.info(
+            f"Updating Neovim. Current version: {current_version}, "
+            f"Latest: {latest_release.tag_name}"
+        )
+        if nvim_updater.download_and_install():
+            logging.info(f"Installed Neovim version {latest_release.tag_name}")
+        else:
+            logging.error("Failed to update Neovim")
+    else:
+        logging.info("Neovim is already up to date.")
+        nvim_updater.update_symlink()
 
-    setup_crontab()
-    create_update_alias()
-    check_self_update()
+    config_manager = ConfigRepoManager()
+    config_manager.clone_or_update()
+    SchedulerManager.setup_crontab()
+    Installer.create_update_alias()
+    SelfUpdater(current_script=__file__).check_and_update()
 
-    current_script_path = os.path.abspath(__file__)
-    if current_script_path != INSTALL_PATH:
+    if os.path.abspath(__file__) != INSTALL_PATH:
         logging.debug("Initial setup complete.")
-        logging.debug(f"The script has been installed to {INSTALL_PATH}")
-        if not current_script_path.startswith(NVIM_DIR):
-            logging.debug(f"You can safely delete this script at {current_script_path}")
+        logging.debug(f"Script installed to {INSTALL_PATH}")
+        if not os.path.abspath(__file__).startswith(os.path.abspath(NVIM_DIR)):
+            logging.debug(
+                f"Safe to delete current script at {os.path.abspath(__file__)}"
+            )
         logging.debug(
             f"Future updates will be handled by the installed script at {INSTALL_PATH}"
         )
     else:
         logging.debug("Update process complete.")
-        logging.debug(f"This script at {INSTALL_PATH} will handle future updates.")
-
-    if not nvim_status:
-        logging.error("Failed to update Neovim.")
 
 
 if __name__ == "__main__":
