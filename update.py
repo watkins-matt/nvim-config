@@ -782,15 +782,16 @@ def main() -> None:
         SchedulerManager.setup_crontab()
         sys.exit(0)
 
+    # Ensure the update script is installed at the primary location
     Installer.install_script()
 
     nvim_updater = NvimUpdater(nvim_dir=NVIM_DIR)
     current_version = nvim_updater.get_installed_version()
     latest_release = ReleaseManager().fetch_latest_release()
-    if current_version is None or (
-        current_version.lstrip("v")
-        != latest_release.tag_name.lstrip("v")
-    ) or not nvim_updater.is_installed_correctly():
+
+    if (current_version is None or
+        current_version.lstrip("v") != latest_release.tag_name.lstrip("v") or
+        not nvim_updater.is_installed_correctly()):
         logging.info(
             f"Updating Neovim. Current version: {current_version}, "
             f"Latest: {latest_release.tag_name}"
@@ -807,21 +808,11 @@ def main() -> None:
     config_manager.clone_or_update()
     SchedulerManager.setup_crontab()
     Installer.create_update_alias()
-    SelfUpdater(current_script=__file__).check_and_update()
 
-    if os.path.abspath(__file__) != INSTALL_PATH:
-        logging.debug("Initial setup complete.")
-        logging.debug(f"Script installed to {INSTALL_PATH}")
-        if not os.path.abspath(__file__).startswith(os.path.abspath(NVIM_DIR)):
-            logging.debug(
-                f"Safe to delete current script at {os.path.abspath(__file__)}"
-            )
-        logging.debug(
-            f"Future updates will be handled by the installed script at {INSTALL_PATH}"
-        )
-    else:
-        logging.debug("Update process complete.")
+    # Trigger self-update for both target script locations
+    SelfUpdater().check_and_update()
 
+    logging.debug("Update process complete.")
 
 if __name__ == "__main__":
     main()
