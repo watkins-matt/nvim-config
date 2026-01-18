@@ -36,11 +36,9 @@ local all_servers = {
         completion = {
           callSnippet = 'Replace',
         },
-        -- diagnostics = { disable = { 'missing-fields' } },
       },
     },
   },
-  -- Add other LSP servers and their configurations here
 }
 
 -- Filter servers to install via Mason, excluding those in the Termux skip list
@@ -59,35 +57,30 @@ return {
   { -- LSP Configuration & Plugins
     'neovim/nvim-lspconfig',
     dependencies = {
-      { 'williamboman/mason.nvim', config = true }, -- Must be loaded before dependents
+      { 'williamboman/mason.nvim', config = true },
       'williamboman/mason-lspconfig.nvim',
       'jay-babu/mason-null-ls.nvim',
       'nvimdev/lspsaga.nvim',
-      { 'j-hui/fidget.nvim', opts = {} }, -- Status updates for LSP
-      { 'folke/neodev.nvim', opts = {} }, -- Lua LSP configurations
+      { 'j-hui/fidget.nvim', opts = {} },
+      { 'folke/neodev.nvim', opts = {} },
     },
     config = function()
-      -- Initialize Mason
       require('mason').setup()
 
-      -- Setup mason-lspconfig to ensure LSP servers are installed
       require('mason-lspconfig').setup {
         ensure_installed = vim.tbl_keys(servers_to_install),
         automatic_installation = true,
-      }
+        handlers = {
+          function(server_name)
+            local server = servers_to_install[server_name] or {}
+            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+            require('lspconfig')[server_name].setup(server)
 
-      -- Setup handlers for mason-lspconfig
-      require('mason-lspconfig').setup_handlers {
-        function(server_name)
-          local server = servers_to_install[server_name] or {}
-          server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-          require('lspconfig')[server_name].setup(server)
-
-          -- If the server is pylsp, ensure its plugins are installed
-          if server_name == 'pylsp' then
-            pylsp.ensure_pylsp_plugins()
-          end
-        end,
+            if server_name == 'pylsp' then
+              pylsp.ensure_pylsp_plugins()
+            end
+          end,
+        },
       }
 
       -- Manually setup LSP servers skipped by Mason (e.g., lua_ls on Termux)
@@ -109,12 +102,10 @@ return {
           local buf = event.buf
           local client = vim.lsp.get_client_by_id(event.data.client_id)
 
-          -- Helper function to set keymaps
           local function map(keys, func, desc)
             vim.keymap.set('n', keys, func, { buffer = buf, desc = 'LSP: ' .. desc })
           end
 
-          -- LSP Keymaps
           map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
           map('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
@@ -126,7 +117,6 @@ return {
           map('K', vim.lsp.buf.hover, 'Hover Documentation')
           map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
-          -- Document highlighting
           if client and client.server_capabilities.documentHighlightProvider then
             vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
               buffer = buf,
@@ -138,7 +128,6 @@ return {
             })
           end
 
-          -- Inlay hints toggle
           if client and client.server_capabilities.inlayHintProvider and vim.lsp.inlay_hint then
             map('<leader>th', function()
               vim.lsp.inlay_hint(buf, not vim.lsp.inlay_hint.is_enabled())
@@ -149,4 +138,3 @@ return {
     end,
   },
 }
--- vim: ts=2 sts=2 sw=2 et
