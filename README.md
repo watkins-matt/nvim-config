@@ -5,8 +5,18 @@ Personal Neovim configuration with LSP, debugging, testing, and git integration.
 ## Quick Install
 
 ```bash
-sudo apt update && sudo apt install -y curl fd-find git lua5.3 make python3 python3-crontab python3-pip python3-requests python3-venv python3-virtualenv ripgrep unzip rust-all nodejs
+sudo apt update && sudo apt install -y curl fd-find git lua5.3 make python3 python3-crontab python3-pip python3-pynvim python3-requests python3-venv python3-virtualenv ripgrep unzip rust-all nodejs npm
 curl -sSL https://raw.githubusercontent.com/watkins-matt/nvim-config/main/update.py -o ~/update_nvim.py && chmod +x ~/update_nvim.py && sudo python3 ~/update_nvim.py && rm ~/update_nvim.py
+```
+
+### Optional: Install provider packages
+
+```bash
+# Node.js provider (for plugins that use Node)
+npm install -g neovim
+
+# Tree-sitter CLI (for :TSInstallFromGrammar, not required for :TSInstall)
+npm install -g tree-sitter-cli
 ```
 
 ## Plugin Managers
