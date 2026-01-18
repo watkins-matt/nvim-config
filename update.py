@@ -35,7 +35,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %I:%M:%S %p",
 )
 
-INSTALL_PATH = "/opt/nvim/update.py"
+INSTALL_PATH = os.path.expanduser("~/.config/nvim/update.py")
 NVIM_DIR = "/opt/nvim/"
 SYMLINK_PATH = "/usr/bin/nvim"
 APPRUN_PATH = "/opt/nvim/squashfs-root/AppRun"
@@ -566,6 +566,39 @@ class ConfigRepoManager:
             self.clone_repo()
 
 
+
+class PluginUpdater:
+    """Handles updating Neovim plugins via lazy.nvim."""
+
+    def __init__(self, nvim_path: str = SYMLINK_PATH) -> None:
+        self.nvim_path = nvim_path
+
+    def update_plugins(self) -> bool:
+        """
+        Update lazy.nvim plugins in headless mode.
+
+        Returns:
+            True if update succeeded, False otherwise.
+        """
+        logging.info("Updating Neovim plugins via lazy.nvim")
+        try:
+            result = run(
+                [self.nvim_path, "--headless", "+Lazy sync", "+qa"],
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                timeout=300,  # 5 minute timeout for plugin updates
+            )
+            if result.returncode == 0:
+                logging.info("Plugin update completed successfully")
+                return True
+            else:
+                logging.error(f"Plugin update failed: {result.stderr}")
+                return False
+        except Exception as e:
+            logging.error(f"Plugin update error: {e}")
+            return False
+
 class SelfUpdater:
     """Handles self-updating of the update script by comparing file contents
     across multiple target locations.
@@ -783,7 +816,6 @@ def main() -> None:
         sys.exit(0)
 
     # Ensure the update script is installed at the primary location
-    Installer.install_script()
 
     nvim_updater = NvimUpdater(nvim_dir=NVIM_DIR)
     current_version = nvim_updater.get_installed_version()
@@ -806,6 +838,7 @@ def main() -> None:
 
     config_manager = ConfigRepoManager()
     config_manager.clone_or_update()
+    PluginUpdater().update_plugins()
     SchedulerManager.setup_crontab()
     Installer.create_update_alias()
 

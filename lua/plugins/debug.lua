@@ -14,6 +14,20 @@ return {
     -- Python debugging
     'mfussenegger/nvim-dap-python',
   },
+  keys = {
+    { '<leader>dc', desc = 'Debug: Start/Continue' },
+    { '<leader>di', desc = 'Debug: Step Into' },
+    { '<leader>do', desc = 'Debug: Step Over' },
+    { '<leader>du', desc = 'Debug: Step Out' },
+    { '<leader>db', desc = 'Debug: Toggle Breakpoint' },
+    { '<leader>dB', desc = 'Debug: Set Conditional Breakpoint' },
+    { '<leader>dr', desc = 'Debug: Toggle REPL' },
+    { '<leader>dl', desc = 'Debug: Run Last' },
+    { '<leader>dx', desc = 'Debug: Terminate' },
+    { '<leader>dt', desc = 'Debug: Toggle DAP UI' },
+    { '<leader>dq', desc = 'Debug: Toggle REPL and focus' },
+    { '<leader>dw', desc = 'Debug: Toggle Console and focus' },
+  },
   config = function()
     local dap = require 'dap'
     local dapui = require 'dapui'
@@ -177,7 +191,7 @@ return {
     if vim.fn.executable(python_project_root.get_python_path()) == 1 then
       require('dap-python').setup(python_project_root.get_python_path())
     else
-      vim.notify('Warning: Python executable not found! Python debugging won’t work.', vim.log.levels.WARN)
+      vim.notify('Warning: Python executable not found! Python debugging will not work.', vim.log.levels.WARN)
     end
 
     -- Additional configurations for Dart can be added here

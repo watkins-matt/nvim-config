@@ -7,6 +7,12 @@ return {
     'nvim-neotest/nvim-nio',
     'nvim-neotest/neotest-python',
   },
+  keys = {
+    { '<leader>t', desc = 'Toggle test interface and focus' },
+    { '<leader>rt', desc = 'Run nearest test' },
+    { '<leader>rf', desc = 'Run current file' },
+    { '<leader>ro', desc = 'Open test output' },
+  },
   config = function()
     -- Import the Python project root utility
     local python_project_root = require 'utils.python_root'
