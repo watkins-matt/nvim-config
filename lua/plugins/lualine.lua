@@ -36,7 +36,7 @@ return {
         lualine_z = {},
       },
       tabline = {},
-      extensions = { 'nvim-tree' },
+      extensions = {},
     }
   end,
 }
