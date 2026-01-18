@@ -61,7 +61,7 @@ return {
       'williamboman/mason-lspconfig.nvim',
       'jay-babu/mason-null-ls.nvim',
       'nvimdev/lspsaga.nvim',
-      { 'j-hui/fidget.nvim', opts = {} },
+      { 'j-hui/fidget.nvim', opts = { notification = { window = { winblend = 0, avoid = { 'NvimTree' } } } } },
       { 'folke/neodev.nvim', opts = {} },
     },
     config = function()
