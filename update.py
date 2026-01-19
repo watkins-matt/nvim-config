@@ -8,6 +8,7 @@ import argparse
 import datetime
 import logging
 import os
+import random
 import re
 import requests
 import shutil
@@ -836,9 +837,16 @@ def main() -> None:
         logging.info("Neovim is already up to date.")
         nvim_updater.update_symlink()
 
-    config_manager = ConfigRepoManager()
-    config_manager.clone_or_update()
-    PluginUpdater().update_plugins()
+    # Only sync config/plugins ~once a week (1 in 7 chance) to reduce resource usage
+    if random.randint(1, 7) == 1:
+        delay = random.randint(0, 1800)  # 0-30 min jitter to stagger across containers
+        logging.info(f"Config sync selected, waiting {delay}s before starting")
+        time.sleep(delay)
+
+        config_manager = ConfigRepoManager()
+        config_manager.clone_or_update()
+        PluginUpdater().update_plugins()
+
     SchedulerManager.setup_crontab()
     Installer.create_update_alias()
 
