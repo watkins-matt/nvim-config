@@ -26,6 +26,11 @@ parser.add_argument(
 parser.add_argument(
     "--config", action="store_true", help="Update Neovim configurations"
 )
+parser.add_argument(
+    "--no-delay", action="store_true",
+    help="Sync right away when selected, without the random wait (for deploys; "
+         "the nightly cron run keeps it, to stagger containers)",
+)
 args = parser.parse_args()
 
 # Configure logging
@@ -839,7 +844,8 @@ def main() -> None:
 
     # Only sync config/plugins ~once a week (1 in 7 chance) to reduce resource usage
     if random.randint(1, 7) == 1:
-        delay = random.randint(0, 1800)  # 0-30 min jitter to stagger across containers
+        # 0-30 min jitter to stagger the nightly cron runs across containers
+        delay = 0 if args.no_delay else random.randint(0, 1800)
         logging.info(f"Config sync selected, waiting {delay}s before starting")
         time.sleep(delay)
 
