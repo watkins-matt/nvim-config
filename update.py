@@ -42,6 +42,9 @@ logging.basicConfig(
 )
 
 INSTALL_PATH = os.path.expanduser("~/.config/nvim/update.py")
+# Nightly cron for this script. The homelab containers run UTC:
+# 10:00 UTC = 2:00am PST / 3:00am PDT.
+NIGHTLY_SCHEDULE = "0 10 * * *"
 NVIM_DIR = "/opt/nvim/"
 SYMLINK_PATH = "/usr/bin/nvim"
 APPRUN_PATH = "/opt/nvim/squashfs-root/AppRun"
@@ -706,13 +709,23 @@ class SchedulerManager:
         """
         cron = CronTab(user=True)
         update_command = f"python3 {INSTALL_PATH}"
-        # Check if the job already exists
-        job_exists = any(job.command == update_command for job in cron)
-        if not job_exists:
+        # Existing entries for this script, including the legacy /opt/nvim copy
+        jobs = [job for job in cron
+                if job.command in (update_command, "python3 /opt/nvim/update.py")]
+        if not jobs:
             job = cron.new(command=update_command)
-            job.setall("0 2 * * *")
+            job.setall(NIGHTLY_SCHEDULE)
             cron.write()
             logging.debug("Crontab entry added for nightly updates")
+            return
+        # Move entries written for the old 02:00 local schedule: the homelab
+        # containers run UTC now, where 02:00 is 6-7pm Pacific.
+        stale = [job for job in jobs if str(job.slices) != NIGHTLY_SCHEDULE]
+        for job in stale:
+            job.setall(NIGHTLY_SCHEDULE)
+        if stale:
+            cron.write()
+            logging.debug("Crontab entry moved to %s", NIGHTLY_SCHEDULE)
         else:
             logging.debug("Crontab entry for nightly updates already exists")
 
